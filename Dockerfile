@@ -1,17 +1,31 @@
-# Frontend Marketing Tools - Con nginx.conf personalizado
-FROM nginx:alpine
+# QA Bot ARSEN 3.0 - Professional QA Analysis
+FROM mcr.microsoft.com/playwright:v1.58.2-jammy
 
-# Copiar archivos del sitio
-COPY public/ /usr/share/nginx/html/
+WORKDIR /app
 
-# Copiar configuración nginx personalizada
-COPY nginx.conf /etc/nginx/conf.d/default.conf
+# Copiar package files
+COPY package*.json ./
+
+# Instalar dependencias
+RUN npm install --production
+
+# Copiar código
+COPY server.js ./
+COPY categories.js ./
+
+# Crear directorio para screenshots
+RUN mkdir -p /tmp/qa-screenshots
 
 # Exponer puerto
-EXPOSE 80
+EXPOSE 3000
+
+# Variables de entorno
+ENV NODE_ENV=production
+ENV PORT=3000
 
 # Health check
-HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-  CMD wget --quiet --tries=1 --spider http://localhost/ || exit 1
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+  CMD node -e "require('http').get('http://localhost:3000/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"
 
-# Nginx se inicia automáticamente
+# Start
+CMD ["node", "server.js"]
