@@ -1,4 +1,4 @@
-# QA Bot Service - Playwright Microservice
+# QA Bot Service V2 - Advanced Playwright Analysis
 FROM mcr.microsoft.com/playwright:v1.58.2-jammy
 
 WORKDIR /app

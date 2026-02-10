@@ -1,169 +1,190 @@
-# 🔍 QA Bot Service
+# 🔍 QA Bot Service V2 - ANÁLISIS AVANZADO
 
-Microservicio de análisis QA con Playwright para Marketing Tools.
+Microservicio profesional de análisis QA con Playwright para auditorías profundas de sitios web.
 
-## 🚀 Deploy en Coolify
+## 🚀 MEJORAS vs V1
 
-### 1. Subir a GitHub
+### ✅ Análisis Funcional Profundo
+- ✅ **Formularios reales**: Analiza action, method, validación, campos
+- ✅ **Botones verificados**: Comprueba que CTAs tengan acción válida
+- ✅ **Links validados**: Detecta links rotos con requests reales
+- ✅ **Emails validados**: Verifica campos de email con formato correcto
 
-```bash
-cd qa-bot-service
-git init
-git add .
-git commit -m "QA Bot microservice with Playwright"
-git branch -M main
-git remote add origin https://github.com/pitt666/qa-bot-service.git
-git push -u origin main
-```
+### ✅ UX Avanzado (WCAG)
+- ✅ **Contraste WCAG**: Calcula ratios reales de color (4.5:1 para texto normal, 3:1 para grande)
+- ✅ **Jerarquía visual**: Verifica estructura correcta H1 > H2 > H3
+- ✅ **Legibilidad**: Tamaño promedio de fuente, elementos muy pequeños
+- ✅ **Accesibilidad**: Detecta problemas de contraste y legibilidad
 
-### 2. Crear app en Coolify
+### ✅ Performance Real
+- ✅ **Load Time**: Tiempo de carga completo en segundos
+- ✅ **FCP**: First Contentful Paint medido
+- ✅ **Requests**: Total de peticiones y peticiones fallidas
+- ✅ **Errores JS**: Captura errores reales de consola con detalles
 
-- **Repository:** `https://github.com/pitt666/qa-bot-service`
-- **Branch:** `main`
-- **Build Pack:** Dockerfile
-- **Port:** 3000
-- **Domain:** `qa.pedroarandamarketing.com` (o el que quieras)
+### ✅ SEO Completo
+- ✅ **Meta tags**: Description, viewport, canonical
+- ✅ **Títulos**: Longitud y optimización
+- ✅ **Imágenes**: ALT tags, tamaño promedio, imágenes pesadas
+- ✅ **Lazy loading**: Detecta si está implementado
 
-### 3. Deploy
+### ✅ WordPress Profundo
+- ✅ **Versión exacta**: Detección de versión instalada
+- ✅ **Tema detectado**: Identifica el theme activo
+- ✅ **Plugins**: Lista plugins comunes instalados
+- ✅ **Vulnerabilidades**: wp-config.php, readme.html, xmlrpc.php expuestos
 
-Click "Deploy" y espera 3-5 minutos.
+### ✅ Anti-Detección
+- ✅ **Stealth mode**: Oculta webdriver para evitar bloqueos
+- ✅ **User agent real**: Chrome 120 legítimo
+- ✅ **Locale mexicano**: es-MX para sitios en español
+- ✅ **Headers realistas**: Accept-Language, timezone
 
----
+## 📊 RESPUESTA MEJORADA
 
-## 📡 API Endpoints
-
-### Health Check
-```
-GET /health
-```
-
-**Response:**
-```json
-{
-  "status": "ok",
-  "service": "qa-bot",
-  "timestamp": "2026-02-09T02:00:00.000Z"
-}
-```
-
-### Execute QA
-```
-POST /qa/execute
-Content-Type: application/json
-```
-
-**Request:**
-```json
-{
-  "url": "https://ejemplo.com",
-  "modules": ["functional", "ux", "technical", "wordpress"]
-}
-```
-
-**Response:**
 ```json
 {
   "success": true,
   "status": "warning",
-  "message": "Sitio con riesgos",
-  "critical": [],
+  "message": "⚠️ Sitio con advertencias",
+  "critical": [
+    "El sitio no responde correctamente (HTTP 403)",
+    "Falta meta viewport - sitio no optimizado para móvil"
+  ],
   "warnings": [
-    "Imágenes muy pesadas detectadas (>500kb)"
+    "2 formulario(s) con problemas detectados",
+    "15 elementos con contraste insuficiente (WCAG)",
+    "3 imagen(es) sin atributo ALT (accesibilidad)"
   ],
   "recommendations": [
-    "Optimizar imágenes con TinyPNG"
+    "Mejorar contraste de colores para accesibilidad",
+    "Optimizar imágenes con TinyPNG, usar WebP/AVIF",
+    "Implementar lazy loading en imágenes"
   ],
+  "details": {
+    "performance": {
+      "loadTime": "3.45s",
+      "fcp": "1.82s",
+      "requests": 45,
+      "failedRequests": 2
+    },
+    "functional": {
+      "forms": [
+        {
+          "index": 1,
+          "action": "/contact",
+          "method": "POST",
+          "fields": [
+            { "type": "email", "name": "email", "required": true },
+            { "type": "text", "name": "message", "required": false }
+          ],
+          "hasSubmit": true,
+          "hasValidation": true,
+          "issues": []
+        }
+      ],
+      "buttons": [
+        {
+          "text": "Contactar",
+          "tag": "button",
+          "hasAction": true,
+          "actionValid": true
+        }
+      ],
+      "links": {
+        "total": 45,
+        "internal": 30,
+        "external": 15,
+        "broken": 2
+      }
+    },
+    "ux": {
+      "headings": { "h1": 1, "h2": 5, "h3": 8 },
+      "contrast": { "issues": 15, "checked": 50 },
+      "readability": { "avgFontSize": 16, "smallTextCount": 3 }
+    },
+    "technical": {
+      "performance": {
+        "loadTime": "3.45s",
+        "fcp": "1.82s",
+        "requests": 45,
+        "failedRequests": 2
+      },
+      "seo": {
+        "title": "Inicio - Mi Sitio",
+        "titleLength": 17,
+        "hasMetaDescription": true,
+        "hasViewport": false,
+        "hasCanonical": true
+      },
+      "images": {
+        "total": 12,
+        "withoutAlt": 3,
+        "heavy": 2,
+        "avgSize": "235KB"
+      },
+      "errors": [
+        "Uncaught TypeError: Cannot read property 'map' of undefined"
+      ]
+    },
+    "wordpress": {
+      "isWordPress": true,
+      "version": "6.4.2",
+      "theme": "twentytwentyfour",
+      "plugins": ["Contact Form 7", "Yoast SEO", "Wordfence Security"],
+      "vulnerabilities": ["readme.html expuesto", "xmlrpc.php activo"]
+    }
+  },
   "url": "https://ejemplo.com",
   "modules": ["functional", "ux", "technical", "wordpress"],
-  "executedAt": "2026-02-09T02:00:00.000Z"
+  "executedAt": "2026-02-10T05:00:00.000Z"
 }
 ```
 
----
-
-## 🔧 Configurar n8n
-
-En el workflow "QA Bot" de n8n:
-
-1. Eliminar nodo "Execute QA with Playwright"
-2. Agregar nodo **"HTTP Request"**
-3. Configurar:
-   - Method: POST
-   - URL: `https://qa.tudominio.com/qa/execute`
-   - Body: `{{ $json.body }}`
-4. Conectar: Webhook → HTTP Request → Response
-
----
-
-## 🧪 Probar localmente
+## 🔧 DEPLOY EN GITHUB
 
 ```bash
-npm install
-npm start
+cd qa-bot-v2
+
+# Reemplazar archivos en el repo
+cp package.json ../Qa_bot_service/
+cp server.js ../Qa_bot_service/
+cp Dockerfile ../Qa_bot_service/
+
+cd ../Qa_bot_service
+
+git add .
+git commit -m "Upgrade to QA Bot V2 - Advanced Analysis"
+git push
 ```
 
-Probar con curl:
-```bash
-curl -X POST http://localhost:3000/qa/execute \
-  -H "Content-Type: application/json" \
-  -d '{
-    "url": "https://google.com",
-    "modules": ["functional", "technical"]
-  }'
-```
+Luego Coolify → Redeploy (tardará 5-7 min por ser build más pesado)
 
----
+## 📈 TIEMPO DE ANÁLISIS
 
-## 📊 Lo que analiza
+- Sitio simple: 30-60 segundos
+- Sitio complejo: 60-120 segundos
+- Sitio con bloqueo anti-bot: Puede fallar o tardar más
 
-### Funcional
-- Formularios y validaciones
-- Links rotos
-- Botones de submit
+## 🎯 PRÓXIMAS MEJORAS POSIBLES
 
-### UX
-- Headlines H1
-- CTAs y botones
-- Tamaño de texto
+- [ ] Screenshot de la página
+- [ ] Análisis de velocidad móvil vs desktop
+- [ ] Detección de analytics (GA, GTM, Meta Pixel)
+- [ ] Validación de schema.org
+- [ ] Análisis de Core Web Vitals completo
+- [ ] PDF con reporte visual
 
-### Técnico
-- Errores de JavaScript
-- Imágenes pesadas
-- Lazy loading
-- Meta tags SEO
+## 🐛 TROUBLESHOOTING
 
-### WordPress
-- Versión de WordPress
-- Plugins detectados
-- Archivos expuestos
-- Seguridad básica
+**Timeout en sitios lentos:**
+- Ya configurado a 90 segundos
+- Algunos sitios pueden ser más lentos, considerar aumentar más
 
----
+**Sitios que bloquean bots (403):**
+- El stealth mode ayuda, pero algunos WAF modernos aún detectan
+- Considerar proxies rotativos para casos extremos
 
-## ⚙️ Variables de entorno (opcional)
-
-```env
-PORT=3000
-NODE_ENV=production
-```
-
----
-
-## 🐛 Troubleshooting
-
-**Error: "Cannot find module 'playwright'"**
-- Ejecutar: `npm install`
-
-**Timeout al analizar sitio:**
-- Aumentar timeout en server.js (línea del goto)
-
-**Navegador no inicia:**
-- Verificar que la imagen Docker incluye Playwright
-
----
-
-## 📝 Notas
-
-- Cada análisis tarda 30-90 segundos
-- Consume ~200-300MB RAM por análisis
-- Chromium se cierra automáticamente después de cada análisis
+**Consumo de memoria:**
+- Cada análisis usa ~300-500MB RAM
+- Servidor con mínimo 2GB RAM recomendado
