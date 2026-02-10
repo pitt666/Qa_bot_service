@@ -1,0 +1,723 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Resultados QA - ARSEN</title>
+    <link rel="stylesheet" href="/shared/styles.css">
+    <style>
+        .report-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .report-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 40px;
+            border-radius: 12px;
+            margin-bottom: 30px;
+        }
+
+        .report-header h1 {
+            margin: 0 0 10px 0;
+            font-size: 32px;
+        }
+
+        .report-header .meta {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-top: 20px;
+            font-size: 14px;
+            opacity: 0.95;
+        }
+
+        .meta-item strong {
+            display: block;
+            margin-bottom: 5px;
+            font-size: 16px;
+        }
+
+        /* Resumen ejecutivo */
+        .executive-summary {
+            background: white;
+            border-radius: 12px;
+            padding: 30px;
+            margin-bottom: 30px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+
+        .status-badge {
+            display: inline-block;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-size: 20px;
+            font-weight: bold;
+            margin: 15px 0;
+        }
+
+        .status-badge.pass {
+            background: #d4edda;
+            color: #155724;
+            border: 2px solid #c3e6cb;
+        }
+
+        .status-badge.warning {
+            background: #fff3cd;
+            color: #856404;
+            border: 2px solid #ffeaa7;
+        }
+
+        .status-badge.fail {
+            background: #f8d7da;
+            color: #721c24;
+            border: 2px solid #f5c6cb;
+        }
+
+        .summary-stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 20px;
+            margin: 25px 0;
+        }
+
+        .stat-box {
+            text-align: center;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 8px;
+        }
+
+        .stat-box .number {
+            font-size: 36px;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+
+        .stat-box .label {
+            font-size: 14px;
+            color: #6c757d;
+        }
+
+        .stat-box.approved .number { color: #28a745; }
+        .stat-box.observations .number { color: #ffc107; }
+        .stat-box.failed .number { color: #dc3545; }
+
+        /* Tabla de categorías */
+        .categories-table {
+            background: white;
+            border-radius: 12px;
+            padding: 30px;
+            margin-bottom: 30px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+
+        .categories-table h2 {
+            margin-top: 0;
+            margin-bottom: 20px;
+        }
+
+        .category-row {
+            display: grid;
+            grid-template-columns: 3fr 1fr;
+            padding: 15px 20px;
+            border-bottom: 1px solid #e9ecef;
+            align-items: center;
+        }
+
+        .category-row:last-child {
+            border-bottom: none;
+        }
+
+        .category-row:hover {
+            background: #f8f9fa;
+            cursor: pointer;
+        }
+
+        .category-name {
+            font-weight: 500;
+            font-size: 16px;
+        }
+
+        .category-status {
+            text-align: right;
+            font-size: 24px;
+        }
+
+        /* Detalle de categorías */
+        .category-detail {
+            background: white;
+            border-radius: 12px;
+            padding: 30px;
+            margin-bottom: 30px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+
+        .category-detail h3 {
+            margin-top: 0;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .category-detail h3 .icon {
+            font-size: 28px;
+        }
+
+        .checks-list {
+            margin: 20px 0;
+        }
+
+        .check-item {
+            display: grid;
+            grid-template-columns: 30px 1fr auto;
+            gap: 15px;
+            padding: 12px 0;
+            border-bottom: 1px solid #f0f0f0;
+            align-items: center;
+        }
+
+        .check-item:last-child {
+            border-bottom: none;
+        }
+
+        .check-icon {
+            font-size: 20px;
+        }
+
+        .check-name {
+            font-size: 15px;
+        }
+
+        .check-detail {
+            font-size: 13px;
+            color: #6c757d;
+            font-style: italic;
+        }
+
+        .observations-box {
+            background: #fff3cd;
+            border-left: 4px solid #ffc107;
+            padding: 15px 20px;
+            margin: 20px 0;
+            border-radius: 4px;
+        }
+
+        .observations-box h4 {
+            margin: 0 0 10px 0;
+            color: #856404;
+        }
+
+        .observations-box ul {
+            margin: 0;
+            padding-left: 20px;
+        }
+
+        .observations-box li {
+            margin: 5px 0;
+            color: #856404;
+        }
+
+        /* Tracking detail */
+        .tracking-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin: 20px 0;
+        }
+
+        .tracking-card {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
+            border-left: 4px solid #667eea;
+        }
+
+        .tracking-card h4 {
+            margin-top: 0;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .tracking-card .detected {
+            color: #28a745;
+            font-weight: bold;
+        }
+
+        .tracking-card .not-detected {
+            color: #dc3545;
+            font-weight: bold;
+        }
+
+        .tracking-card .events-list {
+            margin: 10px 0;
+            padding-left: 20px;
+        }
+
+        .tracking-card .events-list li {
+            margin: 5px 0;
+        }
+
+        /* Screenshots */
+        .screenshots-gallery {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin: 20px 0;
+        }
+
+        .screenshot-item {
+            text-align: center;
+        }
+
+        .screenshot-item img {
+            width: 100%;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+
+        .screenshot-item img:hover {
+            transform: scale(1.05);
+        }
+
+        .screenshot-item .caption {
+            margin-top: 10px;
+            font-size: 14px;
+            color: #6c757d;
+        }
+
+        /* Warning de tiempo */
+        .time-warning {
+            background: #fff3cd;
+            border: 1px solid #ffc107;
+            padding: 15px 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .time-warning .icon {
+            font-size: 24px;
+        }
+
+        /* Conclusión */
+        .conclusion-box {
+            background: white;
+            border-radius: 12px;
+            padding: 30px;
+            margin-bottom: 30px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+
+        .conclusion-box h3 {
+            margin-top: 0;
+        }
+
+        .conclusion-box p {
+            font-size: 16px;
+            line-height: 1.8;
+            color: #495057;
+        }
+
+        /* Botones de acción */
+        .action-buttons {
+            display: flex;
+            gap: 15px;
+            margin: 30px 0;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: all 0.3s;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .btn-primary {
+            background: #667eea;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #5568d3;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-secondary {
+            background: white;
+            color: #667eea;
+            border: 2px solid #667eea;
+        }
+
+        .btn-secondary:hover {
+            background: #f8f9fa;
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .report-header {
+                padding: 30px 20px;
+            }
+
+            .report-header h1 {
+                font-size: 24px;
+            }
+
+            .category-row {
+                grid-template-columns: 2fr 1fr;
+            }
+
+            .check-item {
+                grid-template-columns: 30px 1fr;
+            }
+
+            .check-detail {
+                grid-column: 2 / -1;
+                margin-top: 5px;
+            }
+
+            .action-buttons {
+                flex-direction: column;
+            }
+
+            .btn {
+                width: 100%;
+                justify-content: center;
+            }
+        }
+
+        @media print {
+            .action-buttons, .btn {
+                display: none !important;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="report-container">
+        <!-- Botones de acción (arriba) -->
+        <div class="action-buttons">
+            <button class="btn btn-primary" onclick="window.print()">
+                📄 Imprimir Reporte
+            </button>
+            <button class="btn btn-secondary" onclick="window.location.href='/qa-bot.html'">
+                🔄 Ejecutar Nuevo QA
+            </button>
+        </div>
+
+        <!-- Warning de tiempo (si aplica) -->
+        <div id="timeWarning" style="display: none;" class="time-warning">
+            <span class="icon">⏱️</span>
+            <div>
+                <strong>Tiempo de análisis prolongado</strong>
+                <p style="margin: 5px 0 0 0;">Este análisis tardó más de lo esperado. Esto puede deberse a que el sitio es lento o tiene protección anti-bot.</p>
+            </div>
+        </div>
+
+        <!-- Portada / Header -->
+        <div class="report-header">
+            <h1>📄 Reporte QA Automatizado - ARSEN 3.0</h1>
+            <div class="meta">
+                <div class="meta-item">
+                    <strong>Cliente</strong>
+                    <span id="clientName">-</span>
+                </div>
+                <div class="meta-item">
+                    <strong>Proyecto</strong>
+                    <span id="projectName">-</span>
+                </div>
+                <div class="meta-item">
+                    <strong>Dominio</strong>
+                    <span id="domainEvaluated">-</span>
+                </div>
+                <div class="meta-item">
+                    <strong>Fecha y hora</strong>
+                    <span id="executionDate">-</span>
+                </div>
+                <div class="meta-item">
+                    <strong>Ejecutado por</strong>
+                    <span id="executor">ARSEN 3.0</span>
+                </div>
+                <div class="meta-item">
+                    <strong>Report ID</strong>
+                    <span id="reportId">-</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Resumen ejecutivo -->
+        <div class="executive-summary">
+            <h2>Resumen Ejecutivo</h2>
+            <div class="status-badge" id="statusBadge">-</div>
+            
+            <div class="summary-stats">
+                <div class="stat-box approved">
+                    <div class="number" id="approvedCount">0</div>
+                    <div class="label">Categorías aprobadas</div>
+                </div>
+                <div class="stat-box observations">
+                    <div class="number" id="observationsCount">0</div>
+                    <div class="label">Con observaciones</div>
+                </div>
+                <div class="stat-box failed">
+                    <div class="number" id="failedCount">0</div>
+                    <div class="label">Fallidas</div>
+                </div>
+            </div>
+
+            <div style="margin-top: 25px;">
+                <strong>Recomendación:</strong>
+                <p id="recommendation" style="margin: 10px 0; font-size: 16px;">-</p>
+            </div>
+        </div>
+
+        <!-- Tabla de categorías -->
+        <div class="categories-table">
+            <h2>Estado por Categoría</h2>
+            <div id="categoriesTableContent"></div>
+        </div>
+
+        <!-- Detalle de cada categoría -->
+        <div id="categoriesDetailContent"></div>
+
+        <!-- Conclusión -->
+        <div class="conclusion-box">
+            <h3>Conclusión ARSEN</h3>
+            <p id="conclusion">-</p>
+        </div>
+
+        <!-- Botones de acción (abajo) -->
+        <div class="action-buttons">
+            <button class="btn btn-primary" onclick="window.print()">
+                📄 Imprimir Reporte
+            </button>
+            <button class="btn btn-secondary" onclick="window.location.href='/qa-bot.html'">
+                🔄 Ejecutar Nuevo QA
+            </button>
+        </div>
+    </div>
+
+    <script src="/shared/config.js"></script>
+    <script>
+        // Obtener resultados del sessionStorage
+        const results = JSON.parse(sessionStorage.getItem('qaResults'));
+
+        if (!results) {
+            alert('No hay resultados de QA disponibles');
+            window.location.href = '/qa-bot.html';
+        }
+
+        // Función para obtener icono de estado
+        function getStatusIcon(status) {
+            if (status === 'pass') return '✅';
+            if (status === 'warning') return '⚠️';
+            if (status === 'fail') return '❌';
+            return '❓';
+        }
+
+        // Función para obtener clase de estado
+        function getStatusClass(status) {
+            if (status === 'pass') return 'pass';
+            if (status === 'warning') return 'warning';
+            if (status === 'fail') return 'fail';
+            return '';
+        }
+
+        // Renderizar reporte
+        function renderReport() {
+            // Header
+            document.getElementById('clientName').textContent = results.client || 'Cliente';
+            document.getElementById('projectName').textContent = results.projectName || 'Proyecto';
+            document.getElementById('domainEvaluated').textContent = results.url || '-';
+            document.getElementById('reportId').textContent = results.reportId || '-';
+            
+            const date = new Date(results.executedAt);
+            document.getElementById('executionDate').textContent = date.toLocaleString('es-MX', {
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+
+            // Warning de tiempo (si tardó más de 2 minutos)
+            if (summary.slowAnalysis) {
+                document.getElementById('timeWarning').style.display = 'flex';
+            }
+            
+            // Resumen ejecutivo
+            const summary = results.summary || {};
+            
+            const statusBadge = document.getElementById('statusBadge');
+            statusBadge.textContent = summary.finalStatus || '-';
+            
+            if (summary.finalStatus && summary.finalStatus.includes('🟢')) {
+                statusBadge.className = 'status-badge pass';
+            } else if (summary.finalStatus && summary.finalStatus.includes('🟡')) {
+                statusBadge.className = 'status-badge warning';
+            } else if (summary.finalStatus && summary.finalStatus.includes('🔴')) {
+                statusBadge.className = 'status-badge fail';
+            }
+
+            document.getElementById('approvedCount').textContent = summary.approved || 0;
+            document.getElementById('observationsCount').textContent = summary.withObservations || 0;
+            document.getElementById('failedCount').textContent = summary.failed || 0;
+            document.getElementById('recommendation').textContent = summary.recommendation || '-';
+
+            // Tabla de categorías
+            const categoriesTable = document.getElementById('categoriesTableContent');
+            const categories = results.categories || {};
+            
+            Object.keys(categories).forEach(key => {
+                const cat = categories[key];
+                const row = document.createElement('div');
+                row.className = 'category-row';
+                row.innerHTML = `
+                    <div class="category-name">${cat.name}</div>
+                    <div class="category-status">${getStatusIcon(cat.status)}</div>
+                `;
+                categoriesTable.appendChild(row);
+            });
+
+            // Detalle de categorías
+            const detailContent = document.getElementById('categoriesDetailContent');
+            
+            Object.keys(categories).forEach(key => {
+                const cat = categories[key];
+                const detailDiv = document.createElement('div');
+                detailDiv.className = 'category-detail';
+                
+                let html = `
+                    <h3>
+                        <span class="icon">${getStatusIcon(cat.status)}</span>
+                        ${cat.name}
+                    </h3>
+                `;
+
+                // Checks
+                if (cat.checks && cat.checks.length > 0) {
+                    html += '<div class="checks-list">';
+                    cat.checks.forEach(check => {
+                        html += `
+                            <div class="check-item">
+                                <span class="check-icon">${getStatusIcon(check.status)}</span>
+                                <div>
+                                    <div class="check-name">${check.name}</div>
+                                    ${check.detail ? `<div class="check-detail">${check.detail}</div>` : ''}
+                                </div>
+                            </div>
+                        `;
+                    });
+                    html += '</div>';
+                }
+
+                // Observaciones
+                if (cat.observations && cat.observations.length > 0) {
+                    html += `
+                        <div class="observations-box">
+                            <h4>⚠️ Observaciones</h4>
+                            <ul>
+                                ${cat.observations.map(obs => `<li>${obs}</li>`).join('')}
+                            </ul>
+                        </div>
+                    `;
+                }
+
+                // Tracking (categoría 5)
+                if (cat.tracking) {
+                    html += '<div class="tracking-grid">';
+                    
+                    // Meta Pixel
+                    if (cat.tracking.metaPixel) {
+                        html += `
+                            <div class="tracking-card">
+                                <h4>📊 Meta Pixel</h4>
+                                <p class="${cat.tracking.metaPixel.detected ? 'detected' : 'not-detected'}">
+                                    ${cat.tracking.metaPixel.detected ? '✅ Detectado' : '❌ No detectado'}
+                                </p>
+                                ${cat.tracking.metaPixel.events && cat.tracking.metaPixel.events.length > 0 ? `
+                                    <p><strong>Eventos:</strong></p>
+                                    <ul class="events-list">
+                                        ${cat.tracking.metaPixel.events.map(e => `<li>${e}</li>`).join('')}
+                                    </ul>
+                                ` : ''}
+                            </div>
+                        `;
+                    }
+
+                    // GA4
+                    if (cat.tracking.ga4) {
+                        html += `
+                            <div class="tracking-card">
+                                <h4>📈 Google Analytics 4</h4>
+                                <p class="${cat.tracking.ga4.detected ? 'detected' : 'not-detected'}">
+                                    ${cat.tracking.ga4.detected ? '✅ Detectado' : '❌ No detectado'}
+                                </p>
+                                ${cat.tracking.ga4.events && cat.tracking.ga4.events.length > 0 ? `
+                                    <p><strong>Eventos:</strong></p>
+                                    <ul class="events-list">
+                                        ${cat.tracking.ga4.events.map(e => `<li>${e}</li>`).join('')}
+                                    </ul>
+                                ` : ''}
+                            </div>
+                        `;
+                    }
+
+                    // Server-side
+                    if (cat.tracking.serverSide) {
+                        html += `
+                            <div class="tracking-card">
+                                <h4>🔄 Server-Side Tracking</h4>
+                                <p class="${cat.tracking.serverSide.detected ? 'detected' : 'not-detected'}">
+                                    ${cat.tracking.serverSide.detected ? '✅ Detectado' : '❌ No detectado'}
+                                </p>
+                            </div>
+                        `;
+                    }
+
+                    html += '</div>';
+                }
+
+                // Screenshots (categoría 2)
+                if (cat.screenshots && cat.screenshots.length > 0) {
+                    html += '<div class="screenshots-gallery">';
+                    cat.screenshots.forEach(screenshot => {
+                        html += `
+                            <div class="screenshot-item">
+                                <img src="${screenshot.path}" alt="${screenshot.name}" 
+                                     onerror="this.style.display='none'" />
+                                <div class="caption">${screenshot.name}</div>
+                            </div>
+                        `;
+                    });
+                    html += '</div>';
+                }
+
+                detailDiv.innerHTML = html;
+                detailContent.appendChild(detailDiv);
+            });
+
+            // Conclusión
+            document.getElementById('conclusion').textContent = results.conclusion || 
+                `El sitio ha sido analizado con ${summary.totalCategories || 9} categorías. ${summary.finalStatus}`;
+        }
+
+        // Renderizar al cargar
+        renderReport();
+    </script>
+</body>
+</html>
