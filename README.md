@@ -1,190 +1,291 @@
-# 🔍 QA Bot Service V2 - ANÁLISIS AVANZADO
+# 🎯 QA BOT ARSEN 3.0 - ANÁLISIS PROFESIONAL
 
-Microservicio profesional de análisis QA con Playwright para auditorías profundas de sitios web.
+Sistema completo de QA automatizado con Playwright para análisis de conversión, tracking y funcionalidad.
 
-## 🚀 MEJORAS vs V1
+---
 
-### ✅ Análisis Funcional Profundo
-- ✅ **Formularios reales**: Analiza action, method, validación, campos
-- ✅ **Botones verificados**: Comprueba que CTAs tengan acción válida
-- ✅ **Links validados**: Detecta links rotos con requests reales
-- ✅ **Emails validados**: Verifica campos de email con formato correcto
+## ✅ 9 CATEGORÍAS DE ANÁLISIS
 
-### ✅ UX Avanzado (WCAG)
-- ✅ **Contraste WCAG**: Calcula ratios reales de color (4.5:1 para texto normal, 3:1 para grande)
-- ✅ **Jerarquía visual**: Verifica estructura correcta H1 > H2 > H3
-- ✅ **Legibilidad**: Tamaño promedio de fuente, elementos muy pequeños
-- ✅ **Accesibilidad**: Detecta problemas de contraste y legibilidad
+### 1️⃣ Carga y estado general (20 checks)
+- ✅ Dominio responde
+- ✅ Código HTTP = 200
+- ✅ Sin errores 4xx/5xx
+- ✅ Redirección HTTPS
+- ✅ Sin loops de redirección
+- ✅ Dominio final correcto
+- ✅ SSL válido
+- ✅ Sin warnings de seguridad
+- ✅ Sin mixed content
+- ✅ DOMContentLoaded exitoso
+- ✅ Página interactuable
+- ✅ Sin pantalla en blanco
+- ✅ Sin loader infinito
+- ✅ Body renderizado
+- ✅ Contenido visible
+- ✅ Sin errores JS críticos
+- ✅ Sin requests críticos fallidos
+- ✅ Screenshot inicial
+- ✅ Timestamp
+- ✅ Resultado PASS/FAIL
 
-### ✅ Performance Real
-- ✅ **Load Time**: Tiempo de carga completo en segundos
-- ✅ **FCP**: First Contentful Paint medido
-- ✅ **Requests**: Total de peticiones y peticiones fallidas
-- ✅ **Errores JS**: Captura errores reales de consola con detalles
+### 2️⃣ Visual & Layout
+- ✅ Screenshots: hero, formulario, footer, mobile
+- ✅ Render desktop correcto
+- ✅ Render mobile correcto
+- ✅ Sin texto cortado
+- ✅ Sin overflow horizontal
+- ✅ CTA visible en viewport
+- ✅ Formularios visibles
 
-### ✅ SEO Completo
-- ✅ **Meta tags**: Description, viewport, canonical
-- ✅ **Títulos**: Longitud y optimización
-- ✅ **Imágenes**: ALT tags, tamaño promedio, imágenes pesadas
-- ✅ **Lazy loading**: Detecta si está implementado
+### 3️⃣ Navegación y clicks
+- ✅ Click izquierdo funcional
+- ✅ CTA principal clickable
+- ✅ Botones secundarios clickables
+- ✅ Links internos funcionales
+- ✅ Links externos funcionales
+- ✅ Anclas (#) funcionan
+- ✅ Menú principal funciona
+- ✅ Navegación no bloqueada por JS
+- ✅ Sin pointer-events: none en críticos
 
-### ✅ WordPress Profundo
-- ✅ **Versión exacta**: Detección de versión instalada
-- ✅ **Tema detectado**: Identifica el theme activo
-- ✅ **Plugins**: Lista plugins comunes instalados
-- ✅ **Vulnerabilidades**: wp-config.php, readme.html, xmlrpc.php expuestos
+### 4️⃣ Formularios y conversión
+- ✅ Campos visibles
+- ✅ Escritura en inputs funciona
+- ✅ Campos obligatorios validados
+- ✅ Validación de email
+- ✅ Botón submit habilitado
+- ✅ Submit ejecuta acción
+- ✅ Sin doble submit
+- ✅ Sin bloqueo JS al enviar
 
-### ✅ Anti-Detección
-- ✅ **Stealth mode**: Oculta webdriver para evitar bloqueos
-- ✅ **User agent real**: Chrome 120 legítimo
-- ✅ **Locale mexicano**: es-MX para sitios en español
-- ✅ **Headers realistas**: Accept-Language, timezone
+### 5️⃣ Tracking y eventos
+- ✅ Meta Pixel detectado
+- ✅ Eventos Meta Pixel (PageView, Lead, etc)
+- ✅ GA4 detectado
+- ✅ Eventos GA4 (page_view, form_submit, etc)
+- ✅ Server-side tracking (event_id)
+- ✅ Detección de eventos duplicados
+- ✅ Requests de tracking en network
+- ✅ Sin errores de tracking
 
-## 📊 RESPUESTA MEJORADA
+### 6️⃣ SEO técnico
+- ✅ `<title>` presente
+- ✅ `<meta description>` presente
+- ✅ Un solo `<h1>`
+- ✅ Canonical presente
+- ✅ Sin noindex accidental
+- ✅ Robots.txt accesible
+- ✅ HTML renderizado
+- ✅ Enlaces no rotos
+
+### 7️⃣ Errores JS
+- ✅ Sin errores JS críticos
+- ✅ Sin excepciones no manejadas
+- ✅ Sin errores que rompan interacción
+- ✅ Sin recursos bloqueados
+- ✅ Warnings registrados
+
+### 8️⃣ Experiencia usuario
+- ✅ Desktop Chrome
+- ✅ Mobile emulado
+- ✅ Usuario sin cookies
+- ✅ Primera visita funcional
+- ✅ Segunda visita funcional
+- ✅ Sin bloqueos por sesión
+
+### 9️⃣ Evidencia
+- ✅ Screenshots generados
+- ✅ Logs guardados
+- ✅ Dominio evaluado
+- ✅ Fecha y hora
+- ✅ Resultado final
+
+---
+
+## 📄 FORMATO DE REPORTE
 
 ```json
 {
-  "success": true,
-  "status": "warning",
-  "message": "⚠️ Sitio con advertencias",
-  "critical": [
-    "El sitio no responde correctamente (HTTP 403)",
-    "Falta meta viewport - sitio no optimizado para móvil"
-  ],
-  "warnings": [
-    "2 formulario(s) con problemas detectados",
-    "15 elementos con contraste insuficiente (WCAG)",
-    "3 imagen(es) sin atributo ALT (accesibilidad)"
-  ],
-  "recommendations": [
-    "Mejorar contraste de colores para accesibilidad",
-    "Optimizar imágenes con TinyPNG, usar WebP/AVIF",
-    "Implementar lazy loading en imágenes"
-  ],
-  "details": {
-    "performance": {
-      "loadTime": "3.45s",
-      "fcp": "1.82s",
-      "requests": 45,
-      "failedRequests": 2
-    },
-    "functional": {
-      "forms": [
-        {
-          "index": 1,
-          "action": "/contact",
-          "method": "POST",
-          "fields": [
-            { "type": "email", "name": "email", "required": true },
-            { "type": "text", "name": "message", "required": false }
-          ],
-          "hasSubmit": true,
-          "hasValidation": true,
-          "issues": []
-        }
-      ],
-      "buttons": [
-        {
-          "text": "Contactar",
-          "tag": "button",
-          "hasAction": true,
-          "actionValid": true
-        }
-      ],
-      "links": {
-        "total": 45,
-        "internal": 30,
-        "external": 15,
-        "broken": 2
-      }
-    },
-    "ux": {
-      "headings": { "h1": 1, "h2": 5, "h3": 8 },
-      "contrast": { "issues": 15, "checked": 50 },
-      "readability": { "avgFontSize": 16, "smallTextCount": 3 }
-    },
-    "technical": {
-      "performance": {
-        "loadTime": "3.45s",
-        "fcp": "1.82s",
-        "requests": 45,
-        "failedRequests": 2
-      },
-      "seo": {
-        "title": "Inicio - Mi Sitio",
-        "titleLength": 17,
-        "hasMetaDescription": true,
-        "hasViewport": false,
-        "hasCanonical": true
-      },
-      "images": {
-        "total": 12,
-        "withoutAlt": 3,
-        "heavy": 2,
-        "avgSize": "235KB"
-      },
-      "errors": [
-        "Uncaught TypeError: Cannot read property 'map' of undefined"
-      ]
-    },
-    "wordpress": {
-      "isWordPress": true,
-      "version": "6.4.2",
-      "theme": "twentytwentyfour",
-      "plugins": ["Contact Form 7", "Yoast SEO", "Wordfence Security"],
-      "vulnerabilities": ["readme.html expuesto", "xmlrpc.php activo"]
-    }
-  },
+  "reportId": "uuid",
+  "client": "Cliente",
+  "projectName": "Proyecto",
   "url": "https://ejemplo.com",
-  "modules": ["functional", "ux", "technical", "wordpress"],
-  "executedAt": "2026-02-10T05:00:00.000Z"
+  "executedAt": "2026-02-10T08:00:00.000Z",
+  "summary": {
+    "totalCategories": 9,
+    "approved": 7,
+    "withObservations": 2,
+    "failed": 0,
+    "finalStatus": "🟡 APROBADO CON OBSERVACIONES",
+    "recommendation": "Puede recibir tráfico limitado"
+  },
+  "categories": {
+    "category1": {
+      "name": "Carga y estado general",
+      "status": "pass",
+      "checks": [...],
+      "observations": []
+    },
+    "category2": { ... },
+    "category3": { ... },
+    "category4": { ... },
+    "category5": {
+      "name": "Tracking y eventos",
+      "status": "warning",
+      "checks": [...],
+      "tracking": {
+        "metaPixel": {
+          "detected": true,
+          "events": ["PageView", "ViewContent", "Lead"]
+        },
+        "ga4": {
+          "detected": true,
+          "events": ["page_view", "form_submit"]
+        },
+        "serverSide": {
+          "detected": true,
+          "eventIds": ["event_123"]
+        }
+      },
+      "observations": ["⚠️ Evento Lead se dispara dos veces"]
+    },
+    ...
+  },
+  "screenshots": {
+    "initial": "/path/to/initial.png",
+    "visual": [
+      { "name": "Hero", "path": "/path/to/hero.png" },
+      { "name": "Formulario", "path": "/path/to/form.png" },
+      { "name": "Footer", "path": "/path/to/footer.png" },
+      { "name": "Mobile", "path": "/path/to/mobile.png" }
+    ]
+  },
+  "conclusion": "El sitio ha sido analizado..."
 }
 ```
 
-## 🔧 DEPLOY EN GITHUB
+---
+
+## 🚀 DEPLOY EN GITHUB
 
 ```bash
-cd qa-bot-v2
+cd qa-bot-arsen
 
-# Reemplazar archivos en el repo
-cp package.json ../Qa_bot_service/
-cp server.js ../Qa_bot_service/
-cp Dockerfile ../Qa_bot_service/
+# Reemplazar en tu repo
+cp package.json server.js categories.js Dockerfile ../Qa_bot_service/
 
 cd ../Qa_bot_service
 
 git add .
-git commit -m "Upgrade to QA Bot V2 - Advanced Analysis"
+git commit -m "QA Bot ARSEN 3.0 - Sistema completo"
 git push
 ```
 
-Luego Coolify → Redeploy (tardará 5-7 min por ser build más pesado)
+Luego: **Coolify → Redeploy** (tardará 5-7 min)
 
-## 📈 TIEMPO DE ANÁLISIS
+---
 
-- Sitio simple: 30-60 segundos
-- Sitio complejo: 60-120 segundos
-- Sitio con bloqueo anti-bot: Puede fallar o tardar más
+## 📡 USO DEL API
 
-## 🎯 PRÓXIMAS MEJORAS POSIBLES
+**Endpoint:**
+```
+POST https://qa.pedroarandamarketing.com/qa/execute
+```
 
-- [ ] Screenshot de la página
-- [ ] Análisis de velocidad móvil vs desktop
-- [ ] Detección de analytics (GA, GTM, Meta Pixel)
-- [ ] Validación de schema.org
-- [ ] Análisis de Core Web Vitals completo
-- [ ] PDF con reporte visual
+**Request:**
+```json
+{
+  "url": "https://ejemplo.com",
+  "client": "Nombre Cliente",
+  "projectName": "Proyecto X"
+}
+```
+
+**Response:** Ver formato de reporte arriba
+
+---
+
+## ⏱️ TIEMPO DE ANÁLISIS
+
+- Sitio simple: 60-90 segundos
+- Sitio complejo: 90-180 segundos
+- Con formularios y tracking: 120-240 segundos
+
+---
+
+## 🎯 SCORING DEL REPORTE
+
+**🟢 APROBADO:**
+- 0 categorías fallidas
+- 0-1 con observaciones
+- Puede recibir tráfico
+
+**🟡 APROBADO CON OBSERVACIONES:**
+- 0 categorías fallidas
+- 2+ con observaciones
+- Puede recibir tráfico limitado
+
+**🔴 NO APROBADO:**
+- 1+ categorías fallidas
+- No se recomienda recibir tráfico
+
+---
+
+## 🔧 MEJORAS vs V2
+
+1. ✅ **Tracking completo:** Meta Pixel, GA4, server-side, duplicados
+2. ✅ **Formularios reales:** Prueba de escritura y envío
+3. ✅ **Navegación profunda:** Detecta pointer-events: none
+4. ✅ **Screenshots múltiples:** Hero, form, footer, mobile
+5. ✅ **Reporte estructurado:** 9 categorías con scoring
+6. ✅ **Cliente y proyecto:** Info personalizada en reporte
+7. ✅ **Evidencia completa:** Logs, screenshots, timestamps
+
+---
+
+## 📊 EJEMPLO DE CONCLUSIÓN
+
+```
+El sitio ha sido analizado con 9 categorías de QA automatizado.
+
+Resultado: 🟡 APROBADO CON OBSERVACIONES
+
+Categorías aprobadas: 7
+Categorías con observaciones: 2
+Categorías fallidas: 0
+
+Recomendación: Puede recibir tráfico limitado
+
+Observaciones principales:
+- Meta Pixel detecta evento Lead duplicado al enviar formulario
+- Falta meta description para SEO
+
+El sitio se encuentra técnicamente funcional pero se recomienda
+optimizar tracking antes de escalar campañas.
+```
+
+---
 
 ## 🐛 TROUBLESHOOTING
 
-**Timeout en sitios lentos:**
-- Ya configurado a 90 segundos
-- Algunos sitios pueden ser más lentos, considerar aumentar más
+**"No se detectan CTAs":**
+- El análisis busca elementos con classes como `.btn`, `.button`, `.cta`
+- También busca `<button>`, `<a class="btn">`, `[role="button"]`
 
-**Sitios que bloquean bots (403):**
-- El stealth mode ayuda, pero algunos WAF modernos aún detectan
-- Considerar proxies rotativos para casos extremos
+**"Tracking no detectado":**
+- Meta Pixel: busca `fbq` en scripts
+- GA4: busca `gtag` en scripts
+- Puede haber falsos negativos si el tracking es muy custom
 
-**Consumo de memoria:**
-- Cada análisis usa ~300-500MB RAM
-- Servidor con mínimo 2GB RAM recomendado
+**"Formulario no se puede probar":**
+- Si el form usa validación custom JS compleja, puede fallar
+- El bot intenta escribir "Test" en el primer campo visible
+
+---
+
+## ✅ LISTO PARA PRODUCCIÓN
+
+Este QA Bot ARSEN 3.0 está diseñado para análisis profesional de landing pages,
+sitios de conversión y campañas de marketing digital.
+
+Desarrollado para detectar problemas críticos antes de recibir tráfico pagado.

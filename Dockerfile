@@ -1,4 +1,4 @@
-# QA Bot Service V2 - Advanced Playwright Analysis
+# QA Bot ARSEN 3.0 - Professional QA Analysis
 FROM mcr.microsoft.com/playwright:v1.58.2-jammy
 
 WORKDIR /app
@@ -11,6 +11,10 @@ RUN npm install --production
 
 # Copiar código
 COPY server.js ./
+COPY categories.js ./
+
+# Crear directorio para screenshots
+RUN mkdir -p /tmp/qa-screenshots
 
 # Exponer puerto
 EXPOSE 3000
