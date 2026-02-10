@@ -65,6 +65,7 @@ app.post('/qa/execute', async (req, res) => {
   
   const reportId = generateReportId();
   const executedAt = new Date();
+  const analysisStartTime = Date.now();
   
   console.log(`[ARSEN QA] 🚀 Iniciando análisis: ${url}`);
   console.log(`[ARSEN QA] 📋 Cliente: ${client} | Proyecto: ${projectName}`);
@@ -530,9 +531,14 @@ app.post('/qa/execute', async (req, res) => {
       report.summary.recommendation = 'Puede recibir tráfico';
     }
     
+    // Calcular tiempo total
+    const totalTime = Math.round((Date.now() - analysisStartTime) / 1000);
+    report.summary.analysisTime = `${totalTime}s`;
+    report.summary.slowAnalysis = totalTime > 120; // Warning si tardó más de 2 minutos
+    
     report.conclusion = `El sitio ha sido analizado con ${report.summary.totalCategories} categorías. Estado: ${report.summary.finalStatus}`;
     
-    console.log(`[ARSEN QA] 🏁 Análisis completado`);
+    console.log(`[ARSEN QA] 🏁 Análisis completado en ${totalTime}s`);
     console.log(`[ARSEN QA] 📊 Aprobadas: ${report.summary.approved} | Con observaciones: ${report.summary.withObservations} | Fallidas: ${report.summary.failed}`);
     
     res.json(report);
