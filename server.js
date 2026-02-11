@@ -11,7 +11,8 @@ const {
   analyzeSEO,
   analyzeJSErrors,
   analyzeUserExperience,
-  analyzeEvidence
+  analyzeEvidence,
+  screenshotToBase64
 } = require('./categories');
 
 const app = express();
@@ -518,6 +519,31 @@ app.post('/qa/execute', async (req, res) => {
     // =========================================================================
     
     await browser.close();
+    
+    // Convertir screenshots a base64 para embeber en HTML
+    console.log('[ARSEN QA] 📸 Convirtiendo screenshots a base64...');
+    
+    if (report.screenshots.initial) {
+      report.screenshots.initialBase64 = await screenshotToBase64(report.screenshots.initial);
+    }
+    
+    if (report.screenshots.visual && Array.isArray(report.screenshots.visual)) {
+      for (const screenshot of report.screenshots.visual) {
+        if (screenshot.path) {
+          screenshot.base64 = await screenshotToBase64(screenshot.path);
+        }
+      }
+    }
+    
+    // Performance metrics
+    report.performance = {
+      loadTime: (loadTime / 1000).toFixed(2), // En segundos
+      recommendation: loadTime < 3000 ? '✅ Excelente (< 3s)' : loadTime < 5000 ? '⚠️ Aceptable (3-5s)' : '🔴 Lento (> 5s)',
+      metrics: {
+        timeToLoad: `${(loadTime / 1000).toFixed(2)}s`,
+        status: loadTime < 3000 ? 'excellent' : loadTime < 5000 ? 'good' : 'poor'
+      }
+    };
     
     // Determinar estado final
     if (report.summary.failed > 0) {
