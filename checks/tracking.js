@@ -344,12 +344,181 @@ async function checkTracking({ page }) {
     items: itemsDesconocidos
   });
 
+  // Eventos disparados al hacer click en CTAs principales
+  const eventosClic = await detectarEventosDeClic(page);
+  checks.push(eventosClic);
+
   const estadoGeneral = calcularEstado(checks);
 
   return {
     nombre: 'Tracking',
     estado: estadoGeneral,
     checks
+  };
+}
+
+async function detectarEventosDeClic(page) {
+  // 1. Inyectar interceptores ANTES de los clicks
+  await page.evaluate(() => {
+    window.__qa_eventos_clic = [];
+
+    // Interceptar dataLayer.push
+    if (window.dataLayer) {
+      const pushOriginal = window.dataLayer.push.bind(window.dataLayer);
+      window.dataLayer.push = function(...args) {
+        for (const entry of args) {
+          if (entry && entry.event && !['gtm.js','gtm.dom','gtm.load','gtm.click','gtm.scroll','gtm.historyChange','gtm.timer'].includes(entry.event)) {
+            window.__qa_eventos_clic.push({ fuente: 'dataLayer/GA4', evento: entry.event, datos: JSON.stringify(entry).slice(0, 200) });
+          }
+        }
+        return pushOriginal(...args);
+      };
+    }
+
+    // Interceptar fbq
+    if (window.fbq) {
+      const fbqOriginal = window.fbq;
+      window.fbq = function(tipo, evento, datos) {
+        if (tipo === 'track' || tipo === 'trackCustom') {
+          window.__qa_eventos_clic.push({ fuente: 'Meta Pixel', evento, datos: datos ? JSON.stringify(datos).slice(0, 150) : null });
+        }
+        return fbqOriginal.apply(this, arguments);
+      };
+      // Copiar propiedades del fbq original
+      Object.keys(fbqOriginal).forEach(k => { try { window.fbq[k] = fbqOriginal[k]; } catch { } });
+    }
+
+    // Interceptar ttq (TikTok)
+    if (window.ttq) {
+      const ttqOriginal = window.ttq;
+      const trackOriginal = ttqOriginal.track?.bind(ttqOriginal);
+      if (trackOriginal) {
+        window.ttq.track = function(evento, datos) {
+          window.__qa_eventos_clic.push({ fuente: 'TikTok Pixel', evento, datos: datos ? JSON.stringify(datos).slice(0, 150) : null });
+          return trackOriginal(evento, datos);
+        };
+      }
+    }
+
+    // Interceptar gtag
+    if (window.gtag) {
+      const gtagOriginal = window.gtag;
+      window.gtag = function(tipo, evento, datos) {
+        if (tipo === 'event' && evento && datos?.send_to) {
+          window.__qa_eventos_clic.push({ fuente: 'Google Ads/GA4', evento, datos: JSON.stringify(datos).slice(0, 150) });
+        }
+        return gtagOriginal.apply(this, arguments);
+      };
+    }
+  });
+
+  // 2. Identificar CTAs clickeables que NO naveguen fuera ni sean submit
+  const ctasInfo = await page.evaluate(() => {
+    const urlActual = window.location.href;
+    const dominio = window.location.hostname;
+
+    const selectores = [
+      'button:not([type="submit"]):not([disabled])',
+      'a[class*="btn"]:not([href^="http"]):not([href^="mailto"]):not([href^="tel"])',
+      'a[class*="cta"]:not([href^="http"]):not([href^="mailto"]):not([href^="tel"])',
+      '[class*="btn-primary"]:not([type="submit"])',
+      '[class*="btn-cta"]:not([type="submit"])',
+    ];
+
+    const elementos = [];
+    const vistos = new Set();
+
+    for (const sel of selectores) {
+      for (const el of document.querySelectorAll(sel)) {
+        const texto = el.textContent.trim().slice(0, 60);
+        if (!texto || vistos.has(texto)) continue;
+
+        // Saltar si navega a otra pagina
+        const href = el.getAttribute('href');
+        if (href) {
+          try {
+            const linkUrl = new URL(href, window.location.href);
+            if (linkUrl.hostname !== dominio) continue;
+            if (linkUrl.href !== urlActual && !href.startsWith('#')) continue; // solo anclas o misma pagina
+          } catch { continue; }
+        }
+
+        const rect = el.getBoundingClientRect();
+        if (rect.width === 0 || rect.height === 0) continue; // no visible
+
+        vistos.add(texto);
+        elementos.push({ texto, selector: sel.split(':')[0], visible: rect.top < window.innerHeight });
+      }
+    }
+
+    return elementos.slice(0, 8); // maximo 8 CTAs
+  });
+
+  if (ctasInfo.length === 0) {
+    return {
+      nombre: 'Eventos al hacer click (CTAs)',
+      estado: 'ADVERTENCIA',
+      detalle: 'No se encontraron botones CTA clickeables para probar en la pagina'
+    };
+  }
+
+  // 3. Hacer click en cada CTA y capturar eventos
+  const resultadosPorBoton = [];
+  const urlOriginal = page.url();
+
+  for (const cta of ctasInfo) {
+    try {
+      // Limpiar buffer de eventos antes del click
+      await page.evaluate(() => { window.__qa_eventos_clic = []; });
+
+      // Encontrar el elemento
+      const elemento = await page.evaluateHandle((texto) => {
+        const todos = document.querySelectorAll('button, a[class*="btn"], a[class*="cta"], [class*="btn-primary"], [class*="btn-cta"]');
+        return Array.from(todos).find(el => el.textContent.trim().slice(0, 60) === texto);
+      }, cta.texto);
+
+      if (!elemento) continue;
+
+      // Click sin esperar navegacion
+      await elemento.click().catch(() => {});
+      await page.waitForTimeout(1500);
+
+      // Si navego a otra pagina, volver
+      if (page.url() !== urlOriginal) {
+        await page.goto(urlOriginal, { waitUntil: 'networkidle', timeout: 15000 }).catch(() => {});
+        await page.waitForTimeout(500);
+        // Re-inyectar interceptores si la pagina recargo
+        await page.evaluate(() => { if (!window.__qa_eventos_clic) window.__qa_eventos_clic = []; });
+      }
+
+      // Leer eventos capturados
+      const eventosCapturados = await page.evaluate(() => window.__qa_eventos_clic || []);
+
+      resultadosPorBoton.push({
+        boton: cta.texto,
+        eventos: eventosCapturados
+      });
+
+    } catch { continue; }
+  }
+
+  // 4. Formatear resultado
+  const botonesConEventos = resultadosPorBoton.filter(r => r.eventos.length > 0);
+  const botonesSinEventos = resultadosPorBoton.filter(r => r.eventos.length === 0);
+
+  const items = resultadosPorBoton.map(r => {
+    if (r.eventos.length === 0) return `"${r.boton}" — sin eventos de tracking`;
+    const eventosTexto = r.eventos.map(e => `${e.fuente}: ${e.evento}`).join(', ');
+    return `"${r.boton}" → ${eventosTexto}`;
+  });
+
+  return {
+    nombre: 'Eventos al hacer click (CTAs)',
+    estado: botonesSinEventos.length > 0 && botonesConEventos.length === 0 ? 'ADVERTENCIA' : 'OK',
+    detalle: resultadosPorBoton.length === 0
+      ? 'No se pudieron probar clicks en los CTAs'
+      : `${resultadosPorBoton.length} boton(es) probado(s) — ${botonesConEventos.length} disparan eventos, ${botonesSinEventos.length} sin tracking`,
+    items
   };
 }
 
