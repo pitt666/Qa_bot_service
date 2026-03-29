@@ -1,0 +1,152 @@
+/**
+ * SECCION 1 — SALUD TECNICA
+ * HTTPS, links rotos, imagenes rotas, botones sin accion, errores JS
+ */
+
+async function checkSaludTecnica({ url, page, erroresJS }) {
+  const checks = [];
+
+  // 1. HTTPS
+  const esHttps = url.startsWith('https://');
+  checks.push({
+    nombre: 'HTTPS / SSL',
+    estado: esHttps ? 'OK' : 'ERROR',
+    detalle: esHttps ? 'El sitio usa HTTPS correctamente' : 'El sitio NO usa HTTPS — los datos no viajan cifrados'
+  });
+
+  // 2. Links rotos (internos, mismo dominio)
+  const linksRotos = await page.evaluate(async () => {
+    const anchors = Array.from(document.querySelectorAll('a[href]'));
+    const dominio = window.location.hostname;
+    const internos = anchors.filter(a => {
+      const href = a.getAttribute('href');
+      if (!href || href.startsWith('#') || href.startsWith('mailto:') || href.startsWith('tel:') || href.startsWith('javascript:')) return false;
+      try {
+        return new URL(a.href, window.location.href).hostname === dominio;
+      } catch { return false; }
+    }).slice(0, 30);
+
+    const rotos = [];
+    for (const a of internos) {
+      try {
+        const resp = await fetch(a.href, { method: 'HEAD', cache: 'no-cache' });
+        if (resp.status >= 400) {
+          rotos.push({ url: a.href, status: resp.status, texto: a.textContent.trim().slice(0, 50) });
+        }
+      } catch {
+        rotos.push({ url: a.href, status: 'Sin respuesta', texto: a.textContent.trim().slice(0, 50) });
+      }
+    }
+    return rotos;
+  });
+
+  checks.push({
+    nombre: 'Links rotos',
+    estado: linksRotos.length === 0 ? 'OK' : 'ERROR',
+    detalle: linksRotos.length === 0
+      ? 'No se encontraron links rotos'
+      : `${linksRotos.length} link(s) roto(s) encontrado(s)`,
+    items: linksRotos.map(l => `${l.texto || '(sin texto)'} → ${l.url} [${l.status}]`)
+  });
+
+  // 3. Links rotos en el menu de navegacion
+  const linksMenuRotos = await page.evaluate(async () => {
+    const navSelectors = ['nav a[href]', 'header a[href]', '[role="navigation"] a[href]', '.menu a[href]', '.navbar a[href]'];
+    const navLinks = [];
+    const vistos = new Set();
+    for (const sel of navSelectors) {
+      document.querySelectorAll(sel).forEach(a => {
+        const href = a.getAttribute('href');
+        if (!href || href.startsWith('#') || href.startsWith('mailto:') || href.startsWith('tel:') || href.startsWith('javascript:')) return;
+        if (!vistos.has(a.href)) {
+          vistos.add(a.href);
+          navLinks.push({ href: a.href, texto: a.textContent.trim().slice(0, 50) });
+        }
+      });
+    }
+    const rotos = [];
+    for (const link of navLinks) {
+      try {
+        const resp = await fetch(link.href, { method: 'HEAD', cache: 'no-cache' });
+        if (resp.status >= 400) rotos.push({ url: link.href, status: resp.status, texto: link.texto });
+      } catch {
+        rotos.push({ url: link.href, status: 'Sin respuesta', texto: link.texto });
+      }
+    }
+    return rotos;
+  });
+
+  checks.push({
+    nombre: 'Links rotos en menu',
+    estado: linksMenuRotos.length === 0 ? 'OK' : 'ERROR',
+    detalle: linksMenuRotos.length === 0
+      ? 'Todos los links del menu funcionan'
+      : `${linksMenuRotos.length} link(s) roto(s) en el menu`,
+    items: linksMenuRotos.map(l => `"${l.texto}" → ${l.url} [${l.status}]`)
+  });
+
+  // 4. Imagenes rotas
+  const imagenesRotas = await page.evaluate(() => {
+    return Array.from(document.querySelectorAll('img'))
+      .filter(img => !img.complete || img.naturalWidth === 0)
+      .map(img => ({ src: img.src || img.getAttribute('src'), alt: img.alt || '(sin alt)' }))
+      .slice(0, 20);
+  });
+
+  checks.push({
+    nombre: 'Imagenes rotas',
+    estado: imagenesRotas.length === 0 ? 'OK' : 'ERROR',
+    detalle: imagenesRotas.length === 0
+      ? 'No se encontraron imagenes rotas'
+      : `${imagenesRotas.length} imagen(es) rota(s)`,
+    items: imagenesRotas.map(i => `${i.alt} → ${i.src}`)
+  });
+
+  // 5. Botones sin accion
+  const botonesVacios = await page.evaluate(() => {
+    const vacios = [];
+    for (const btn of document.querySelectorAll('button, [role="button"], input[type="button"], input[type="submit"]')) {
+      const texto = btn.textContent.trim().slice(0, 60) || btn.value || '(sin texto)';
+      const tieneAccion = btn.onclick || btn.getAttribute('onclick') || btn.getAttribute('data-href') ||
+        btn.getAttribute('href') || btn.closest('form') || btn.type === 'submit';
+      if (!tieneAccion) vacios.push({ texto, tipo: btn.tagName.toLowerCase() });
+    }
+    for (const a of document.querySelectorAll('a.btn, a.button, a[class*="btn"], a[class*="cta"]')) {
+      const href = a.getAttribute('href');
+      if (!href || href === '#' || href === 'javascript:void(0)' || href === 'javascript:;') {
+        vacios.push({ texto: a.textContent.trim().slice(0, 60), tipo: 'enlace-boton sin destino' });
+      }
+    }
+    return vacios;
+  });
+
+  checks.push({
+    nombre: 'Botones sin accion',
+    estado: botonesVacios.length === 0 ? 'OK' : 'ADVERTENCIA',
+    detalle: botonesVacios.length === 0
+      ? 'Todos los botones tienen accion definida'
+      : `${botonesVacios.length} boton(es) sin accion detectado(s)`,
+    items: botonesVacios.map(b => `"${b.texto}" (${b.tipo})`)
+  });
+
+  // 6. Errores JavaScript
+  const erroresCriticos = erroresJS.filter(e => !e.includes('Warning') && !e.includes('Deprecated'));
+  checks.push({
+    nombre: 'Errores JavaScript',
+    estado: erroresCriticos.length === 0 ? 'OK' : erroresCriticos.length <= 2 ? 'ADVERTENCIA' : 'ERROR',
+    detalle: erroresCriticos.length === 0
+      ? 'No se detectaron errores de JavaScript'
+      : `${erroresCriticos.length} error(es) JS — puede haber funcionalidad rota silenciosamente`,
+    items: erroresCriticos.slice(0, 10).map(e => e.slice(0, 150))
+  });
+
+  return { nombre: 'Salud Tecnica', estado: calcularEstado(checks), checks };
+}
+
+function calcularEstado(checks) {
+  if (checks.some(c => c.estado === 'ERROR')) return 'ERROR';
+  if (checks.some(c => c.estado === 'ADVERTENCIA')) return 'ADVERTENCIA';
+  return 'OK';
+}
+
+module.exports = { checkSaludTecnica };
