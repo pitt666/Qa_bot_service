@@ -194,16 +194,7 @@ async function checkSEO({ url, page }) {
       : 'Sin schema markup — agregar LocalBusiness, FAQ u Organization ayuda a Google a entender tu negocio',
   });
 
-  // 10. Idioma declarado
-  checks.push({
-    nombre: 'Idioma declarado en HTML',
-    estado: seoData.idioma ? 'OK' : 'ADVERTENCIA',
-    detalle: seoData.idioma
-      ? `Idioma declarado: lang="${seoData.idioma}"`
-      : 'Sin atributo lang en el HTML — importante para SEO y accesibilidad'
-  });
-
-  // 11. Links internos
+  // 10. Links internos
   checks.push({
     nombre: 'Links internos',
     estado: seoData.linksInternos >= 3 ? 'OK' : seoData.linksInternos >= 1 ? 'ADVERTENCIA' : 'ERROR',

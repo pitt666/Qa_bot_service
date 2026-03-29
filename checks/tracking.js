@@ -263,27 +263,22 @@ async function checkTracking({ page }) {
       : 'No detectado'
   });
 
-  // Clarity / Hotjar (grabacion de sesiones)
-  const grabacionSesiones = [];
-  if (clarity.detectado) grabacionSesiones.push(`Microsoft Clarity${clarity.projectId ? ` (${clarity.projectId})` : ''}`);
-  if (hotjar.detectado) grabacionSesiones.push(`Hotjar${hotjar.siteId ? ` (Site ID: ${hotjar.siteId})` : ''}`);
+  // Scripts desconocidos (incluye Clarity y Hotjar si los detecta como no identificados)
+  const herramientasGrabacion = [];
+  if (clarity.detectado) herramientasGrabacion.push(`Microsoft Clarity${clarity.projectId ? ` (${clarity.projectId})` : ''}`);
+  if (hotjar.detectado) herramientasGrabacion.push(`Hotjar${hotjar.siteId ? ` (Site ID: ${hotjar.siteId})` : ''}`);
 
-  checks.push({
-    nombre: 'Grabacion de sesiones',
-    estado: grabacionSesiones.length > 0 ? 'OK' : 'ADVERTENCIA',
-    detalle: grabacionSesiones.length > 0
-      ? `Activo: ${grabacionSesiones.join(', ')} — graba sesiones de usuarios`
-      : 'Sin herramienta de grabacion de sesiones — Clarity o Hotjar ayudan a ver como navegan los usuarios'
-  });
+  const todosDesconocidos = [...scriptsDesconocidos];
+  const itemsDesconocidos = todosDesconocidos.map(d => String(d));
+  if (herramientasGrabacion.length > 0) itemsDesconocidos.push(`Grabacion de sesiones: ${herramientasGrabacion.join(', ')}`);
 
-  // Scripts desconocidos
   checks.push({
     nombre: 'Scripts de terceros desconocidos',
-    estado: scriptsDesconocidos.length === 0 ? 'OK' : scriptsDesconocidos.length <= 2 ? 'ADVERTENCIA' : 'ERROR',
-    detalle: scriptsDesconocidos.length === 0
-      ? 'Todos los scripts de terceros son de herramientas conocidas'
-      : `${scriptsDesconocidos.length} script(s) de origen desconocido — verificar con el equipo que son y si son necesarios`,
-    items: scriptsDesconocidos
+    estado: todosDesconocidos.length === 0 ? 'OK' : todosDesconocidos.length <= 2 ? 'ADVERTENCIA' : 'ERROR',
+    detalle: todosDesconocidos.length === 0
+      ? `Todos los scripts son de herramientas conocidas${herramientasGrabacion.length > 0 ? ` — grabacion activa: ${herramientasGrabacion.join(', ')}` : ''}`
+      : `${todosDesconocidos.length} script(s) de origen desconocido — verificar con el equipo`,
+    items: itemsDesconocidos
   });
 
   const estadoGeneral = calcularEstado(checks);

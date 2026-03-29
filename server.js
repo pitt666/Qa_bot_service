@@ -10,7 +10,6 @@ const { checkMobile } = require('./checks/mobile');
 const { checkNegocio } = require('./checks/negocio');
 const { checkChat } = require('./checks/chat');
 const { checkContenido } = require('./checks/contenido');
-const { checkEcommerce } = require('./checks/ecommerce');
 const { checkTracking } = require('./checks/tracking');
 const { checkSEO } = require('./checks/seo');
 const { checkTecnologia } = require('./checks/tecnologia');
@@ -98,7 +97,6 @@ app.post('/qa/execute', async (req, res) => {
       negocio,
       chat,
       contenido,
-      ecommerce,
       tracking,
       seo,
       tecnologia
@@ -109,7 +107,6 @@ app.post('/qa/execute', async (req, res) => {
       checkNegocio(contextoGlobal),
       checkChat(contextoGlobal),
       checkContenido(contextoGlobal),
-      checkEcommerce(contextoGlobal),
       checkTracking(contextoGlobal),
       checkSEO(contextoGlobal),
       checkTecnologia(contextoGlobal)
@@ -137,12 +134,11 @@ app.post('/qa/execute', async (req, res) => {
         negocio,
         chat,
         contenido,
-        ecommerce,
         tracking,
         seo,
         tecnologia
       },
-      resumen: generarResumen({ saludTecnica, rendimiento, formularios, mobile, negocio, chat, contenido, ecommerce, tracking, seo, tecnologia })
+      resumen: generarResumen({ saludTecnica, rendimiento, formularios, mobile, negocio, chat, contenido, tracking, seo, tecnologia })
     };
 
     console.log(`[${reporteId}] Analisis completado en ${tiempoTotal}s`);

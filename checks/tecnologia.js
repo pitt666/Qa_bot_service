@@ -83,20 +83,6 @@ async function checkTecnologia({ page }) {
       detectado.ecommerce = 'PrestaShop';
     }
 
-    // ─── HOSTING SIGNALS ───
-    const referenciasHosting = [];
-    if (htmlTexto.includes('vercel') || htmlTexto.includes('.vercel.app')) referenciasHosting.push('Vercel');
-    if (htmlTexto.includes('netlify') || htmlTexto.includes('.netlify.app')) referenciasHosting.push('Netlify');
-    if (htmlTexto.includes('wpengine') || htmlTexto.includes('.wpengine.com')) referenciasHosting.push('WP Engine');
-    if (htmlTexto.includes('kinsta') || htmlTexto.includes('.kinsta.cloud')) referenciasHosting.push('Kinsta');
-    if (htmlTexto.includes('siteground')) referenciasHosting.push('SiteGround');
-    if (htmlTexto.includes('bluehost')) referenciasHosting.push('Bluehost');
-    if (htmlTexto.includes('godaddy') || htmlTexto.includes('.godaddysites.com')) referenciasHosting.push('GoDaddy');
-    if (htmlTexto.includes('cloudflare')) referenciasHosting.push('Cloudflare (CDN/Proxy)');
-    if (htmlTexto.includes('amazonaws') || htmlTexto.includes('cloudfront')) referenciasHosting.push('AWS');
-    if (detectado.ecommerce === 'Shopify') referenciasHosting.push('Shopify Hosting');
-    detectado.hosting = referenciasHosting;
-
     // ─── TEMAS POPULARES ───
     if (detectado.cms === 'WordPress') {
       if (htmlTexto.includes('astra') || htmlTexto.includes('ast-container')) detectado.tema = 'Astra';
@@ -120,7 +106,6 @@ async function checkTecnologia({ page }) {
   if (techData.framework) tecnologiasDetectadas.push(`Framework: ${techData.framework}`);
   if (techData.ecommerce) tecnologiasDetectadas.push(`Ecommerce: ${techData.ecommerce}`);
   if (techData.tema) tecnologiasDetectadas.push(`Tema: ${techData.tema}`);
-  if (techData.hosting && techData.hosting.length > 0) tecnologiasDetectadas.push(`Hosting/CDN: ${techData.hosting.join(', ')}`);
   if (techData.metaGenerator) tecnologiasDetectadas.push(`Generator: ${techData.metaGenerator}`);
 
   checks.push({
