@@ -412,17 +412,32 @@ async function detectarEventosDeClic(page) {
     }
   });
 
-  // 2. Identificar CTAs clickeables que NO naveguen fuera ni sean submit
-  const ctasInfo = await page.evaluate(() => {
-    const urlActual = window.location.href;
-    const dominio = window.location.hostname;
+  // 2. Interceptar navegacion externa para que el click no salte de pagina
+  // Esto permite capturar eventos de WhatsApp, tel:, y links externos
+  await page.route('**/*', (route) => {
+    const url = route.request().url();
+    const esNavegacion = route.request().resourceType() === 'document';
+    const esMismaPagina = url === page.url() || url.startsWith(new URL(page.url()).origin);
+    // Bloquear navegacion a paginas externas o WhatsApp/tel durante la prueba
+    if (esNavegacion && !esMismaPagina) {
+      route.abort();
+    } else {
+      route.continue();
+    }
+  });
 
+  // 3. Identificar TODOS los CTAs incluyendo WhatsApp, tel y links externos
+  const ctasInfo = await page.evaluate(() => {
     const selectores = [
       'button:not([type="submit"]):not([disabled])',
-      'a[class*="btn"]:not([href^="http"]):not([href^="mailto"]):not([href^="tel"])',
-      'a[class*="cta"]:not([href^="http"]):not([href^="mailto"]):not([href^="tel"])',
+      'a[href*="wa.me"]',
+      'a[href*="whatsapp"]',
+      'a[href^="tel:"]',
+      'a[class*="btn"]',
+      'a[class*="cta"]',
       '[class*="btn-primary"]:not([type="submit"])',
       '[class*="btn-cta"]:not([type="submit"])',
+      '[class*="whatsapp"]',
     ];
 
     const elementos = [];
@@ -430,28 +445,35 @@ async function detectarEventosDeClic(page) {
 
     for (const sel of selectores) {
       for (const el of document.querySelectorAll(sel)) {
-        const texto = el.textContent.trim().slice(0, 60);
-        if (!texto || vistos.has(texto)) continue;
+        const texto = (el.textContent.trim() || el.getAttribute('aria-label') || el.getAttribute('title') || '').slice(0, 60);
+        const href = el.getAttribute('href') || '';
 
-        // Saltar si navega a otra pagina
-        const href = el.getAttribute('href');
-        if (href) {
-          try {
-            const linkUrl = new URL(href, window.location.href);
-            if (linkUrl.hostname !== dominio) continue;
-            if (linkUrl.href !== urlActual && !href.startsWith('#')) continue; // solo anclas o misma pagina
-          } catch { continue; }
+        // Etiqueta descriptiva para WhatsApp y tel
+        let etiqueta = texto;
+        if (!etiqueta) {
+          if (href.includes('wa.me') || href.includes('whatsapp')) etiqueta = 'Boton WhatsApp';
+          else if (href.startsWith('tel:')) etiqueta = `Llamar ${href.replace('tel:', '')}`;
+          else etiqueta = '(boton sin texto)';
         }
 
-        const rect = el.getBoundingClientRect();
-        if (rect.width === 0 || rect.height === 0) continue; // no visible
+        if (vistos.has(etiqueta)) continue;
 
-        vistos.add(texto);
-        elementos.push({ texto, selector: sel.split(':')[0], visible: rect.top < window.innerHeight });
+        const rect = el.getBoundingClientRect();
+        if (rect.width === 0 || rect.height === 0) continue;
+
+        vistos.add(etiqueta);
+
+        // Clasificar tipo para el reporte
+        let tipo = 'boton';
+        if (href.includes('wa.me') || href.includes('whatsapp')) tipo = 'whatsapp';
+        else if (href.startsWith('tel:')) tipo = 'telefono';
+        else if (href.startsWith('http') && !href.includes(window.location.hostname)) tipo = 'externo';
+
+        elementos.push({ texto: etiqueta, tipo });
       }
     }
 
-    return elementos.slice(0, 8); // maximo 8 CTAs
+    return elementos.slice(0, 10); // maximo 10 CTAs
   });
 
   if (ctasInfo.length === 0) {
@@ -468,53 +490,63 @@ async function detectarEventosDeClic(page) {
 
   for (const cta of ctasInfo) {
     try {
-      // Limpiar buffer de eventos antes del click
+      // Limpiar buffer antes del click
       await page.evaluate(() => { window.__qa_eventos_clic = []; });
 
-      // Encontrar el elemento
-      const elemento = await page.evaluateHandle((texto) => {
-        const todos = document.querySelectorAll('button, a[class*="btn"], a[class*="cta"], [class*="btn-primary"], [class*="btn-cta"]');
-        return Array.from(todos).find(el => el.textContent.trim().slice(0, 60) === texto);
-      }, cta.texto);
+      // Encontrar el elemento por texto o tipo especial
+      const elemento = await page.evaluateHandle((cta) => {
+        // Busqueda especial para WhatsApp
+        if (cta.tipo === 'whatsapp') {
+          return document.querySelector('a[href*="wa.me"], a[href*="whatsapp"]');
+        }
+        if (cta.tipo === 'telefono') {
+          return document.querySelector('a[href^="tel:"]');
+        }
+        // Busqueda general por texto
+        const todos = document.querySelectorAll('button, a, [class*="btn"], [class*="cta"]');
+        return Array.from(todos).find(el => {
+          const t = (el.textContent.trim() || el.getAttribute('aria-label') || '').slice(0, 60);
+          return t === cta.texto;
+        });
+      }, cta);
 
       if (!elemento) continue;
 
-      // Click sin esperar navegacion
+      // Click — la navegacion externa ya esta bloqueada por page.route
       await elemento.click().catch(() => {});
       await page.waitForTimeout(1500);
 
-      // Si navego a otra pagina, volver
+      // Si pese al bloqueo navego (ancla interna, etc.) volver
       if (page.url() !== urlOriginal) {
         await page.goto(urlOriginal, { waitUntil: 'networkidle', timeout: 15000 }).catch(() => {});
         await page.waitForTimeout(500);
-        // Re-inyectar interceptores si la pagina recargo
         await page.evaluate(() => { if (!window.__qa_eventos_clic) window.__qa_eventos_clic = []; });
       }
 
-      // Leer eventos capturados
       const eventosCapturados = await page.evaluate(() => window.__qa_eventos_clic || []);
 
-      resultadosPorBoton.push({
-        boton: cta.texto,
-        eventos: eventosCapturados
-      });
+      resultadosPorBoton.push({ boton: cta.texto, tipo: cta.tipo, eventos: eventosCapturados });
 
     } catch { continue; }
   }
+
+  // Quitar el interceptor de rutas al terminar
+  await page.unroute('**/*').catch(() => {});
 
   // 4. Formatear resultado
   const botonesConEventos = resultadosPorBoton.filter(r => r.eventos.length > 0);
   const botonesSinEventos = resultadosPorBoton.filter(r => r.eventos.length === 0);
 
   const items = resultadosPorBoton.map(r => {
-    if (r.eventos.length === 0) return `"${r.boton}" — sin eventos de tracking`;
+    const tipoLabel = r.tipo !== 'boton' ? ` [${r.tipo}]` : '';
+    if (r.eventos.length === 0) return `"${r.boton}"${tipoLabel} — sin eventos de tracking`;
     const eventosTexto = r.eventos.map(e => `${e.fuente}: ${e.evento}`).join(', ');
-    return `"${r.boton}" → ${eventosTexto}`;
+    return `"${r.boton}"${tipoLabel} → ${eventosTexto}`;
   });
 
   return {
     nombre: 'Eventos al hacer click (CTAs)',
-    estado: botonesSinEventos.length > 0 && botonesConEventos.length === 0 ? 'ADVERTENCIA' : 'OK',
+    estado: botonesConEventos.length === 0 && resultadosPorBoton.length > 0 ? 'ADVERTENCIA' : 'OK',
     detalle: resultadosPorBoton.length === 0
       ? 'No se pudieron probar clicks en los CTAs'
       : `${resultadosPorBoton.length} boton(es) probado(s) — ${botonesConEventos.length} disparan eventos, ${botonesSinEventos.length} sin tracking`,
