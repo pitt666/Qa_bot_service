@@ -1,7 +1,7 @@
 {
   "name": "qa-bot-arsen",
-  "version": "3.0.0",
-  "description": "QA Bot ARSEN 3.0 - Análisis completo para conversión y tracking",
+  "version": "4.0.0",
+  "description": "QA Bot ARSEN 4.0 - Auditoria web completa: salud tecnica, tracking, SEO, negocio y conversion",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
@@ -11,7 +11,8 @@
     "express": "^4.18.2",
     "playwright": "^1.58.2",
     "cors": "^2.8.5",
-    "uuid": "^9.0.1"
+    "uuid": "^9.0.1",
+    "form-data": "^4.0.0"
   },
   "engines": {
     "node": ">=18.0.0"
