@@ -109,7 +109,7 @@ async function checkTracking({ page }) {
     resultado.gtm = gtm;
 
     // ─── GOOGLE ADS ───
-    const googleAds = { detectado: false, conversionId: null };
+    const googleAds = { detectado: false, conversionId: null, eventos: [] };
     const scriptTextos = Array.from(document.querySelectorAll('script:not([src])')).map(s => s.textContent).join(' ');
     const adsMatch = scriptTextos.match(/['"]?(AW-\d{7,11})/);
     if (adsMatch) {
@@ -123,24 +123,74 @@ async function checkTracking({ page }) {
         if (match) { googleAds.detectado = true; googleAds.conversionId = match[0]; }
       }
     }
+    // Detectar eventos de conversion de Google Ads: gtag('event', 'conversion', {send_to: 'AW-xxx/yyy'})
+    if (googleAds.detectado) {
+      try {
+        const conversionMatches = scriptTextos.matchAll(/gtag\s*\(\s*['"]event['"]\s*,\s*['"]conversion['"]\s*,\s*\{[^}]*send_to['"]\s*:\s*['"]([^'"]+)['"]/g);
+        for (const m of conversionMatches) {
+          if (!googleAds.eventos.includes(m[1])) googleAds.eventos.push(m[1]);
+        }
+        // Tambien buscar eventos personalizados de remarketing
+        const remarketingMatch = scriptTextos.matchAll(/gtag\s*\(\s*['"]event['"]\s*,\s*['"](\w+)['"]\s*,\s*\{[^}]*AW-/g);
+        for (const m of remarketingMatch) {
+          if (!googleAds.eventos.includes(m[1]) && m[1] !== 'conversion') googleAds.eventos.push(`remarketing: ${m[1]}`);
+        }
+      } catch { }
+      // Buscar en dataLayer pushes con AW
+      try {
+        if (window.dataLayer) {
+          for (const entry of window.dataLayer) {
+            if (entry.event === 'conversion' || (entry['gtm.elementId'] && String(entry['gtm.elementId']).includes('AW'))) {
+              if (!googleAds.eventos.includes('conversion')) googleAds.eventos.push('conversion');
+            }
+          }
+        }
+      } catch { }
+    }
     resultado.googleAds = googleAds;
 
     // ─── TIKTOK PIXEL ───
-    const tiktok = { detectado: false, pixelId: null };
+    const tiktok = { detectado: false, pixelId: null, eventos: [] };
     if (window.ttq || window.TiktokAnalyticsObject) {
       tiktok.detectado = true;
-      const match = scriptTextos.match(/ttq\.load\s*\(\s*['"]([A-Z0-9]{15,})['"]/);
-      if (match) tiktok.pixelId = match[1];
+      const matchId = scriptTextos.match(/ttq\.load\s*\(\s*['"]([A-Z0-9]{15,})['"]/);
+      if (matchId) tiktok.pixelId = matchId[1];
+      // Detectar ttq.track('EventName') en scripts
+      try {
+        const eventosMatch = scriptTextos.matchAll(/ttq\.track\s*\(\s*['"](\w+)['"]/g);
+        for (const m of eventosMatch) {
+          if (!tiktok.eventos.includes(m[1])) tiktok.eventos.push(m[1]);
+        }
+        // Tambien detectar via ttq.page() y ttq.identify()
+        if (scriptTextos.includes('ttq.page(')) tiktok.eventos.push('PageView (ttq.page)');
+      } catch { }
+      // Intentar leer queue de eventos del objeto ttq
+      try {
+        if (window.ttq && Array.isArray(window.ttq._q)) {
+          for (const cmd of window.ttq._q) {
+            if (cmd[0] === 'track' && cmd[1] && !tiktok.eventos.includes(cmd[1])) {
+              tiktok.eventos.push(cmd[1]);
+            }
+          }
+        }
+      } catch { }
     }
     resultado.tiktok = tiktok;
 
     // ─── LINKEDIN INSIGHT TAG ───
-    const linkedin = { detectado: false, partnerId: null };
+    const linkedin = { detectado: false, partnerId: null, eventos: [] };
     if (window._linkedin_data_partner_ids || document.querySelector('script[src*="snap.licdn.com"]')) {
       linkedin.detectado = true;
       if (window._linkedin_data_partner_ids && window._linkedin_data_partner_ids.length > 0) {
         linkedin.partnerId = window._linkedin_data_partner_ids[0];
       }
+      // LinkedIn conversion events via lintrk
+      try {
+        const eventosLinkedin = scriptTextos.matchAll(/lintrk\s*\(\s*['"]track['"]\s*,\s*\{[^}]*conversion_id['"]\s*:\s*['"]?(\d+)/g);
+        for (const m of eventosLinkedin) {
+          linkedin.eventos.push(`Conversion ID: ${m[1]}`);
+        }
+      } catch { }
     }
     resultado.linkedin = linkedin;
 
@@ -239,29 +289,42 @@ async function checkTracking({ page }) {
     checks.push({
       nombre: 'Google Ads',
       estado: 'OK',
-      detalle: `Tag de conversion activo — ID: ${googleAds.conversionId}`
+      detalle: `Tag de conversion activo — ID: ${googleAds.conversionId}`,
+      items: googleAds.eventos.length > 0
+        ? [`Conversiones detectadas: ${googleAds.eventos.join(', ')}`]
+        : ['No se detectaron eventos de conversion en el codigo de la pagina']
     });
   } else {
     checks.push({ nombre: 'Google Ads', estado: 'ADVERTENCIA', detalle: 'Tag de conversion de Google Ads no detectado' });
   }
 
   // TikTok
-  checks.push({
-    nombre: 'TikTok Pixel',
-    estado: tiktok.detectado ? 'OK' : 'ADVERTENCIA',
-    detalle: tiktok.detectado
-      ? `Activo${tiktok.pixelId ? ` — ID: ${tiktok.pixelId}` : ''}`
-      : 'No detectado'
-  });
+  if (tiktok.detectado) {
+    checks.push({
+      nombre: 'TikTok Pixel',
+      estado: 'OK',
+      detalle: `Activo${tiktok.pixelId ? ` — ID: ${tiktok.pixelId}` : ' — ID no detectado'}`,
+      items: tiktok.eventos.length > 0
+        ? [`Eventos: ${tiktok.eventos.join(', ')}`]
+        : ['No se detectaron eventos ttq.track() en la pagina']
+    });
+  } else {
+    checks.push({ nombre: 'TikTok Pixel', estado: 'ADVERTENCIA', detalle: 'No detectado' });
+  }
 
   // LinkedIn
-  checks.push({
-    nombre: 'LinkedIn Insight Tag',
-    estado: linkedin.detectado ? 'OK' : 'ADVERTENCIA',
-    detalle: linkedin.detectado
-      ? `Activo${linkedin.partnerId ? ` — Partner ID: ${linkedin.partnerId}` : ''}`
-      : 'No detectado'
-  });
+  if (linkedin.detectado) {
+    checks.push({
+      nombre: 'LinkedIn Insight Tag',
+      estado: 'OK',
+      detalle: `Activo${linkedin.partnerId ? ` — Partner ID: ${linkedin.partnerId}` : ''}`,
+      items: linkedin.eventos.length > 0
+        ? linkedin.eventos
+        : ['No se detectaron eventos de conversion de LinkedIn en la pagina']
+    });
+  } else {
+    checks.push({ nombre: 'LinkedIn Insight Tag', estado: 'ADVERTENCIA', detalle: 'No detectado' });
+  }
 
   // Scripts desconocidos (incluye Clarity y Hotjar si los detecta como no identificados)
   const herramientasGrabacion = [];
