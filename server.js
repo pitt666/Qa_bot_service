@@ -16,7 +16,18 @@ const { checkTecnologia } = require('./checks/tecnologia');
 const { generarReporteHTML } = require('./reporte/html');
 
 const app = express();
-app.use(cors());
+
+app.use(cors({
+  origin: [
+    'https://app.pedroarandamarketing.com',
+    'https://pedroarandamarketing.com',
+    'http://localhost:3000',
+    'http://localhost:8080'
+  ],
+  methods: ['GET', 'POST', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+}));
+
 app.use(express.json({ limit: '10mb' }));
 
 const PORT = process.env.PORT || 3000;
@@ -71,7 +82,6 @@ app.post('/qa/execute', async (req, res) => {
 
     let httpStatus = null;
     try {
-      // Intentar con networkidle, si timeout caer a domcontentloaded
       try {
         const response = await page.goto(url, { waitUntil: 'networkidle', timeout: 90000 });
         httpStatus = response?.status();
