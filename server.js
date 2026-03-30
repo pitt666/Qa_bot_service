@@ -71,8 +71,20 @@ app.post('/qa/execute', async (req, res) => {
 
     let httpStatus = null;
     try {
-      const response = await page.goto(url, { waitUntil: 'networkidle', timeout: 60000 });
-      httpStatus = response?.status();
+      // Intentar con networkidle, si timeout caer a domcontentloaded
+      try {
+        const response = await page.goto(url, { waitUntil: 'networkidle', timeout: 90000 });
+        httpStatus = response?.status();
+      } catch (e) {
+        if (e.message.includes('Timeout')) {
+          console.log(`[${reporteId}] networkidle timeout, reintentando con domcontentloaded...`);
+          const response = await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
+          httpStatus = response?.status();
+          await page.waitForTimeout(3000);
+        } else {
+          throw e;
+        }
+      }
     } catch (e) {
       await browser.close();
       return res.status(200).json({
