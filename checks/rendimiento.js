@@ -68,7 +68,7 @@ async function checkRendimiento({ page }) {
     items: imagenesProblematicas.map(i => `${i.nombre}: ${i.problemas.join(' | ')}`)
   });
 
-  // Scripts de terceros — informativo (OK), solo listar
+  // Scripts de terceros — INFORMATIVO
   const scriptsTerceros = await page.evaluate(() => {
     const dominio = window.location.hostname.replace('www.', '');
     return [...new Set(Array.from(document.querySelectorAll('script[src]'))
@@ -84,7 +84,7 @@ async function checkRendimiento({ page }) {
     items: scriptsTerceros
   });
 
-  // Google Fonts — informativo (OK), el check de fuentes >3 ya cubre el problema real
+  // Google Fonts — INFORMATIVO
   const googleFonts = await page.evaluate(() =>
     Array.from(document.querySelectorAll('link[href*="fonts.googleapis.com"]')).length > 0 ||
     Array.from(document.querySelectorAll('style')).some(s => s.textContent.includes('fonts.googleapis.com'))
@@ -97,7 +97,7 @@ async function checkRendimiento({ page }) {
       : 'Sin Google Fonts externos'
   });
 
-  // Fuentes tipograficas — mas de 3 si es problema real
+  // Fuentes tipograficas — INFORMATIVO si >3 (observacion de diseno, no problema real)
   const fuentes = await page.evaluate(() => {
     const ff = new Set();
     for (const el of document.querySelectorAll('h1,h2,h3,p,span,button,a')) {
@@ -108,10 +108,10 @@ async function checkRendimiento({ page }) {
   });
   checks.push({
     nombre: 'Fuentes tipograficas',
-    estado: fuentes.length <= 3 ? 'OK' : 'ADVERTENCIA',
+    estado: fuentes.length <= 3 ? 'OK' : 'INFORMATIVO',
     detalle: fuentes.length <= 3
       ? `${fuentes.length} fuente(s) — correcto`
-      : `${fuentes.length} fuentes — mas de 3 afecta consistencia y velocidad`,
+      : `${fuentes.length} fuentes — mas de 3 puede afectar consistencia visual (informativo)`,
     items: fuentes
   });
 
@@ -119,8 +119,9 @@ async function checkRendimiento({ page }) {
 }
 
 function calcularEstado(checks) {
-  if (checks.some(c => c.estado === 'ERROR')) return 'ERROR';
-  if (checks.some(c => c.estado === 'ADVERTENCIA')) return 'ADVERTENCIA';
+  const reales = checks.filter(c => c.estado !== 'INFORMATIVO');
+  if (reales.some(c => c.estado === 'ERROR'))       return 'ERROR';
+  if (reales.some(c => c.estado === 'ADVERTENCIA')) return 'ADVERTENCIA';
   return 'OK';
 }
 

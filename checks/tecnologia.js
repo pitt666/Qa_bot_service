@@ -1,5 +1,6 @@
 /**
  * SECCION 11 — TECNOLOGIA DETECTADA
+ * Toda esta seccion es INFORMATIVA — no afecta el score general
  */
 async function checkTecnologia({ page }) {
   const checks = [];
@@ -108,18 +109,19 @@ async function checkTecnologia({ page }) {
     techData.metaGenerator && `Generator: ${techData.metaGenerator}`,
   ].filter(Boolean);
 
+  // Todo INFORMATIVO — tecnologia es solo datos, no problemas
   checks.push({
     nombre: 'Tecnologia detectada',
-    estado: 'OK',
-    detalle: items.length ? `${items.length} tecnologia(s) identificada(s)` : 'No se identifico la tecnologia',
+    estado: 'INFORMATIVO',
+    detalle: items.length ? `${items.length} tecnologia(s) identificada(s)` : 'No se pudo identificar la tecnologia — puede ser codigo custom u ofuscado',
     items
   });
 
   if (techData.cms === 'WordPress')
-    checks.push({ nombre: 'WordPress — consideraciones', estado: 'ADVERTENCIA', detalle: 'Verificar que plugins, temas y core esten actualizados' });
+    checks.push({ nombre: 'WordPress — consideraciones', estado: 'INFORMATIVO', detalle: 'Verificar que plugins, temas y core esten actualizados (recomendacion)' });
 
   if (techData.cms === 'Wix' || techData.cms === 'Squarespace')
-    checks.push({ nombre: `${techData.cms} — limitaciones`, estado: 'ADVERTENCIA', detalle: `${techData.cms}: plataforma cerrada con limitaciones SEO y personalizacion` });
+    checks.push({ nombre: `${techData.cms} — limitaciones`, estado: 'INFORMATIVO', detalle: `${techData.cms}: plataforma cerrada con limitaciones SEO y personalizacion (informativo)` });
 
   return { nombre: 'Tecnologia', estado: 'OK', checks };
 }
