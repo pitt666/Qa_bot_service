@@ -1,8 +1,20 @@
 /**
  * SECCION 1 — SALUD TECNICA
  */
-async function checkSaludTecnica({ url, page, erroresJS }) {
+async function checkSaludTecnica({ url, page, erroresJS, httpStatus }) {
   const checks = [];
+
+  // 0. Estado HTTP — si es 4xx/5xx los demas checks son poco confiables
+  if (httpStatus !== null && httpStatus !== undefined) {
+    const esError = httpStatus >= 400;
+    checks.push({
+      nombre: 'Estado HTTP',
+      estado: esError ? 'ERROR' : 'OK',
+      detalle: esError
+        ? `Pagina respondio HTTP ${httpStatus} — resultados del analisis pueden ser incorrectos (analiza la URL correcta)`
+        : `HTTP ${httpStatus} — pagina accesible`
+    });
+  }
 
   const esHttps = url.startsWith('https://');
   checks.push({
@@ -53,9 +65,8 @@ async function checkSaludTecnica({ url, page, erroresJS }) {
         if (!href || href.startsWith('#') || href.startsWith('mailto:') || href.startsWith('tel:') || href.startsWith('javascript:')) return;
         try {
           const u = new URL(a.href, window.location.href);
-          // Solo links internos o del mismo dominio, excluir shortlinks
           if (excluir.some(d => u.hostname.includes(d))) return;
-          if (u.hostname !== dominio) return; // solo internos
+          if (u.hostname !== dominio) return;
           if (!vistos.has(a.href)) { vistos.add(a.href); navLinks.push({ href: a.href, texto: a.textContent.trim().slice(0, 50) }); }
         } catch {}
       });
@@ -77,17 +88,32 @@ async function checkSaludTecnica({ url, page, erroresJS }) {
     items: linksMenuRotos.map(l => `"${l.texto}" → ${l.url} [${l.status}]`)
   });
 
+  // Imagenes rotas — distinguir internas (ERROR) de externas (ADVERTENCIA, puede ser anti-hotlinking)
   const imagenesRotas = await page.evaluate(() => {
+    const dominio = window.location.hostname;
     return Array.from(document.querySelectorAll('img'))
       .filter(img => !img.complete || img.naturalWidth === 0)
-      .map(img => ({ src: img.src || img.getAttribute('src'), alt: img.alt || '(sin alt)' }))
+      .map(img => {
+        const src = img.src || img.getAttribute('src') || '';
+        let esExterna = false;
+        try { esExterna = new URL(src).hostname !== dominio; } catch {}
+        return { src, alt: img.alt || '(sin alt)', esExterna };
+      })
       .slice(0, 20);
   });
+
+  const rotasInternas  = imagenesRotas.filter(i => !i.esExterna);
+  const rotasExternas  = imagenesRotas.filter(i =>  i.esExterna);
+  const hayRotasReales = rotasInternas.length > 0;
+  const hayExternas    = rotasExternas.length > 0;
+
   checks.push({
     nombre: 'Imagenes rotas',
-    estado: imagenesRotas.length === 0 ? 'OK' : 'ERROR',
-    detalle: imagenesRotas.length === 0 ? 'No se encontraron imagenes rotas' : `${imagenesRotas.length} imagen(es) rota(s)`,
-    items: imagenesRotas.map(i => `${i.alt} → ${i.src}`)
+    estado: hayRotasReales ? 'ERROR' : hayExternas ? 'ADVERTENCIA' : 'OK',
+    detalle: imagenesRotas.length === 0
+      ? 'No se encontraron imagenes rotas'
+      : `${rotasInternas.length > 0 ? rotasInternas.length + ' interna(s) rota(s)' : ''}${rotasInternas.length > 0 && hayExternas ? ' + ' : ''}${hayExternas ? rotasExternas.length + ' externa(s) — puede ser anti-hotlinking' : ''}`,
+    items: imagenesRotas.map(i => `${i.alt}${i.esExterna ? ' [externo]' : ''} → ${i.src}`)
   });
 
   const botonesVacios = await page.evaluate(() => {
