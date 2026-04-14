@@ -96,13 +96,21 @@ async function checkNegocio({ url, page }) {
       : 'Sin direccion fisica (informativo — no aplica para negocios online)'
   });
 
-  // 5. Favicon — real check
+  // 5. Favicon — verificacion robusta
   const favicon = await page.evaluate(async () => {
-    if (document.querySelector('link[rel*="icon"]')) return { ok: true, como: 'tag <link rel="icon">' };
-    try {
-      const r = await fetch('/favicon.ico', { method: 'HEAD', cache: 'no-cache' });
-      if (r.ok) return { ok: true, como: '/favicon.ico disponible' };
-    } catch {}
+    // 1. Buscar cualquier link tag de icono
+    const linkTag = document.querySelector('link[rel*="icon"], link[rel="shortcut icon"]');
+    if (linkTag) {
+      const href = linkTag.getAttribute('href') || '(sin href)';
+      return { ok: true, como: `tag <link rel="${linkTag.getAttribute('rel')}"> — ${href.slice(0, 60)}` };
+    }
+    // 2. Probar rutas comunes de favicon
+    for (const path of ['/favicon.ico', '/favicon.png', '/favicon.svg']) {
+      try {
+        const r = await fetch(path, { method: 'HEAD', cache: 'no-cache' });
+        if (r.ok) return { ok: true, como: `${path} disponible (HTTP ${r.status})` };
+      } catch {}
+    }
     return { ok: false };
   });
   checks.push({
@@ -125,26 +133,39 @@ async function checkNegocio({ url, page }) {
       : 'Sin aviso de cookies — requerido para Google Ads y Facebook Ads (remarketing)'
   });
 
-  // 7. Documentos legales — real check (ERROR si no tiene ninguno)
+  // 7. Documentos legales — verificar las 3 politicas
   const legal = await page.evaluate(() => {
     const links = Array.from(document.querySelectorAll('a[href]'));
-    const check = (palabras) => links.some(a =>
-      palabras.some(p => a.textContent.toLowerCase().includes(p) || (a.href || '').toLowerCase().includes(p))
-    );
+    const texto = document.body.innerText.toLowerCase();
+    // Verifica si algún link (texto o URL) contiene las palabras, o si el texto de la pagina las contiene
+    const check = (palabras) =>
+      links.some(a => palabras.some(p => a.textContent.toLowerCase().includes(p) || (a.href || '').toLowerCase().includes(p))) ||
+      palabras.some(p => texto.includes(p));
     return {
-      privacidad: check(['privacidad', 'privacy', 'aviso de privacidad', 'aviso-de-privacidad', 'politica de privacidad', 'politica-de-privacidad', 'politicas']),
-      terminos: check(['terminos', 't\u00e9rminos', 'terms', 'condiciones', 'conditions', 'aviso legal', 'aviso-legal']),
-      cookies: check(['cookies', 'politica de cookies', 'cookie policy', 'cookie-policy'])
+      privacidad: check(['privacidad', 'privacy', 'aviso de privacidad', 'aviso-de-privacidad', 'politica de privacidad', 'politica-de-privacidad']),
+      terminos:   check(['terminos y condiciones', 'términos y condiciones', 'terms and conditions', 'terms of service', 'aviso legal', 'aviso-legal', 'condiciones de uso']),
+      cookies:    check(['politica de cookies', 'política de cookies', 'cookie policy', 'cookie-policy', 'politica-cookies'])
     };
   });
-  const tieneAlguno = legal.privacidad || legal.terminos;
-  const encontrados = [legal.privacidad && 'Privacidad', legal.terminos && 'Terminos', legal.cookies && 'Cookies'].filter(Boolean);
+  const encontrados = [
+    legal.privacidad && 'Politica de privacidad',
+    legal.terminos   && 'Terminos y condiciones',
+    legal.cookies    && 'Politica de cookies'
+  ].filter(Boolean);
+  const faltantes = [
+    !legal.privacidad && 'Politica de privacidad',
+    !legal.terminos   && 'Terminos y condiciones',
+    !legal.cookies    && 'Politica de cookies'
+  ].filter(Boolean);
   checks.push({
     nombre: 'Documentos legales',
-    estado: tieneAlguno ? 'OK' : 'ERROR',
-    detalle: tieneAlguno
-      ? `Encontrado: ${encontrados.join(', ')}`
-      : 'Sin politica de privacidad ni terminos — obligatorio si tienes formularios o tracking'
+    estado: encontrados.length === 3 ? 'OK' : encontrados.length > 0 ? 'ADVERTENCIA' : 'ERROR',
+    detalle: encontrados.length === 3
+      ? `Documentos legales completos: ${encontrados.join(', ')}`
+      : encontrados.length > 0
+        ? `Encontrado: ${encontrados.join(', ')} — Falta: ${faltantes.join(', ')}`
+        : 'Sin documentos legales — obligatorio si tienes formularios, tracking o campanias',
+    items: faltantes.map(f => `Falta crear: ${f}`)
   });
 
   // 8. Redes sociales — real check

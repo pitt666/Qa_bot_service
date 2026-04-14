@@ -84,19 +84,6 @@ async function checkRendimiento({ page }) {
     items: scriptsTerceros
   });
 
-  // Google Fonts — INFORMATIVO
-  const googleFonts = await page.evaluate(() =>
-    Array.from(document.querySelectorAll('link[href*="fonts.googleapis.com"]')).length > 0 ||
-    Array.from(document.querySelectorAll('style')).some(s => s.textContent.includes('fonts.googleapis.com'))
-  );
-  checks.push({
-    nombre: 'Google Fonts',
-    estado: 'OK',
-    detalle: googleFonts
-      ? 'Google Fonts detectados — hospedar localmente mejora velocidad (informativo)'
-      : 'Sin Google Fonts externos'
-  });
-
   // Fuentes tipograficas — INFORMATIVO si >3 (observacion de diseno, no problema real)
   const fuentes = await page.evaluate(() => {
     const ff = new Set();
