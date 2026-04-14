@@ -19,13 +19,12 @@ async function checkContenido({ page }) {
       .map(([texto, c]) => `"${texto.slice(0, 60)}..." (${c} veces)`)
       .slice(0, 5);
   });
-
   checks.push({
     nombre: 'Contenido duplicado',
     estado: duplicados.length === 0 ? 'OK' : 'ADVERTENCIA',
     detalle: duplicados.length === 0
       ? 'No se encontro contenido duplicado'
-      : `${duplicados.length} bloque(s) de texto repetido(s) — puede ser error al copiar secciones`,
+      : `${duplicados.length} bloque(s) de texto repetido(s)`,
     items: duplicados
   });
 
@@ -42,14 +41,13 @@ async function checkContenido({ page }) {
     }
     return { sinAlt: sinAlt.slice(0, 10), altGenerico: altGenerico.slice(0, 10) };
   });
-
   checks.push({
     nombre: 'Alt text en imagenes',
     estado: altInfo.sinAlt.length === 0 && altInfo.altGenerico.length === 0 ? 'OK'
       : altInfo.sinAlt.length > 5 ? 'ERROR' : 'ADVERTENCIA',
     detalle: altInfo.sinAlt.length === 0 && altInfo.altGenerico.length === 0
       ? 'Todas las imagenes tienen alt text descriptivo'
-      : `${altInfo.sinAlt.length} sin alt, ${altInfo.altGenerico.length} con alt generico (IMG001, foto...)`,
+      : `${altInfo.sinAlt.length} sin alt, ${altInfo.altGenerico.length} con alt generico`,
     items: [...altInfo.sinAlt.map(s => `Sin alt: ${s}`), ...altInfo.altGenerico]
   });
 
@@ -59,7 +57,6 @@ async function checkContenido({ page }) {
     const conProblemas = iframes.filter(f => { const src = f.src || f.getAttribute('src'); return !src || src.trim() === '' || src === 'about:blank'; });
     return { total: iframes.length, conProblemas: conProblemas.length, srcs: iframes.map(f => f.src).slice(0, 5) };
   });
-
   if (videosInfo.total > 0) {
     checks.push({
       nombre: 'Videos embebidos (YouTube/Vimeo)',
@@ -72,34 +69,44 @@ async function checkContenido({ page }) {
   }
 
   // 4. Logo enlaza al home
-  // Selectores expandidos: WordPress (.custom-logo-link), Elementor, Bootstrap, temas genéricos
+  // Busca en contenedores header/nav; imagen con "logo"/"brand"/"marca" en clase, alt o src
   const logoInfo = await page.evaluate(() => {
     let enlazaHome = false;
-    const selectors = [
-      '.custom-logo-link',
-      '.site-logo a',
-      '.site-branding a',
-      '.navbar-brand',
-      '[class*="logo"] a',
-      'a[class*="logo"]',
-      'header a',
-      '.logo a',
-      'a.logo',
-      'a[href="/"]',
-      'a img'
-    ].join(', ');
-    for (const el of document.querySelectorAll(selectors)) {
-      const link = el.tagName === 'A' ? el : el.closest('a');
-      if (!link) continue;
-      const href = link.getAttribute('href') || '';
-      enlazaHome = href === '/' || href === '' ||
-        href === window.location.origin + '/' ||
-        link.href === window.location.origin + '/';
-      if (enlazaHome) break;
+
+    const contenedores = Array.from(document.querySelectorAll(
+      'header, nav, [class*="navbar"], [class*="header"], [class*="site-header"], [class*="top-bar"], [class*="masthead"]'
+    ));
+    if (contenedores.length === 0) contenedores.push(document.body);
+
+    outer: for (const cont of contenedores) {
+      // Condicion 1: imagen con logo/brand/marca en clase, alt o src
+      for (const img of cont.querySelectorAll('img')) {
+        const esLogo = /logo|brand|marca|site-icon/i.test(
+          (img.className || '') + '|' + (img.getAttribute('alt') || '') + '|' + (img.getAttribute('src') || '')
+        );
+        if (!esLogo) continue;
+        const link = img.closest('a');
+        if (!link) continue;
+        const href = link.getAttribute('href') || '';
+        if (href === '/' || href === '' || link.href === window.location.origin + '/' || link.href === window.location.origin) {
+          enlazaHome = true;
+          break outer;
+        }
+      }
+      // Condicion 2: link con clase logo/brand conocida
+      for (const a of cont.querySelectorAll(
+        'a.logo, a[class*="logo"], a[class*="brand"], .custom-logo-link, .navbar-brand, .site-logo, .site-branding > a'
+      )) {
+        const href = a.getAttribute('href') || '';
+        if (href === '/' || href === '' || a.href === window.location.origin + '/' || a.href === window.location.origin) {
+          enlazaHome = true;
+          break outer;
+        }
+      }
     }
+
     return { enlazaHome };
   });
-
   checks.push({
     nombre: 'Logo enlaza al home',
     estado: logoInfo.enlazaHome ? 'OK' : 'ADVERTENCIA',

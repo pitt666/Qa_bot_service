@@ -6,9 +6,10 @@ const tls = require('tls');
 async function checkNegocio({ url, page }) {
   const checks = [];
 
+  // 1. WhatsApp
   const whatsappInfo = await page.evaluate(() => {
     const links = Array.from(document.querySelectorAll(
-      'a[href*="wa.me"], a[href*="api.whatsapp.com"], a[href*="whatsapp.com/send"], a[href*="wa.link"]'
+      'a[href*="wa.me"], a[href*="api.whatsapp.com"], a[href*="whatsapp.com/send"], a[href*="wa.link"], a[href*="web.whatsapp.com"]'
     ));
     const numeros = links.map(a => {
       const match = a.href.match(/(?:wa\.me\/|phone=)(\d+)/);
@@ -19,7 +20,7 @@ async function checkNegocio({ url, page }) {
       };
     });
     const widgets = document.querySelectorAll(
-      '[class*="whatsapp"], [id*="whatsapp"], [class*="wa-"], [id*="wa-"], [class*="wp-float"], [class*="float-whats"]'
+      '[class*="whatsapp"], [id*="whatsapp"], [class*="wa-"], [id*="wa-"], [class*="wp-float"], [class*="float-whats"], [class*="ws-float"], [class*="chat-whatsapp"], img[src*="whatsapp"]'
     );
     return { numeros, widgetDetectado: widgets.length > 0 };
   });
@@ -32,39 +33,77 @@ async function checkNegocio({ url, page }) {
     items: whatsappInfo.numeros.map(n => `${n.numero} — "${n.texto}" (${n.ubicacion})`)
   });
 
+  // 2. Telefono clickeable — solo href=tel:
   const telefonosInfo = await page.evaluate(() => {
     const clickeables = Array.from(document.querySelectorAll('a[href^="tel:"]')).map(a => ({
-      numero: a.href.replace('tel:', ''),
+      numero: decodeURIComponent(a.href.replace('tel:', '').trim()),
       texto: a.textContent.trim().slice(0, 40) || a.getAttribute('aria-label') || ''
     }));
-    const numerosEnTexto = (document.body.innerText.match(/(?:\+?52\s?)?(?:\(?\d{2,3}\)?\s?)?\d{4}[-\s]?\d{4}/g) || []).length;
-    return { clickeables, numerosEnTexto };
+    return { clickeables };
   });
-  if (telefonosInfo.clickeables.length > 0) {
-    checks.push({ nombre: 'Telefono clickeable', estado: 'OK', detalle: `${telefonosInfo.clickeables.length} numero(s) clickeable(s)`, items: telefonosInfo.clickeables.map(t => `${t.numero} — "${t.texto}"`) });
-  } else if (telefonosInfo.numerosEnTexto > 0) {
-    checks.push({ nombre: 'Telefono clickeable', estado: 'ADVERTENCIA', detalle: 'Hay numeros en el texto pero NO son clickeables en mobile' });
-  } else {
-    checks.push({ nombre: 'Telefono clickeable', estado: 'ADVERTENCIA', detalle: 'No se detecto numero de telefono' });
-  }
+  checks.push({
+    nombre: 'Telefono clickeable',
+    estado: telefonosInfo.clickeables.length > 0 ? 'OK' : 'ADVERTENCIA',
+    detalle: telefonosInfo.clickeables.length > 0
+      ? `${telefonosInfo.clickeables.length} numero(s) con href=tel:`
+      : 'Sin telefono clickeable — agregar <a href="tel:..."> para que funcione en mobile',
+    items: telefonosInfo.clickeables.map(t => `${t.numero}${t.texto ? ` — "${t.texto}"` : ''}`)
+  });
 
-  const tieneDireccion = await page.evaluate(() => {
-    const texto = document.body.innerText.toLowerCase();
-    const tieneEtiqueta = !!document.querySelector('address');
+  // 3. Correo clickeable — solo href=mailto:
+  const emailInfo = await page.evaluate(() => {
+    const clickeables = Array.from(document.querySelectorAll('a[href^="mailto:"]')).map(a => ({
+      email: decodeURIComponent(a.href.replace('mailto:', '').split('?')[0].trim()),
+      texto: a.textContent.trim().slice(0, 40) || ''
+    }));
+    return { clickeables };
+  });
+  checks.push({
+    nombre: 'Correo clickeable',
+    estado: emailInfo.clickeables.length > 0 ? 'OK' : 'ADVERTENCIA',
+    detalle: emailInfo.clickeables.length > 0
+      ? `${emailInfo.clickeables.length} correo(s) con href=mailto:`
+      : 'Sin correo clickeable — agregar <a href="mailto:..."> si se muestra un email',
+    items: emailInfo.clickeables.map(e => `${e.email}${e.texto ? ` — "${e.texto}"` : ''}`)
+  });
+
+  // 4. Direccion fisica — patrones estructurales, sin nombres de ciudades
+  const dirInfo = await page.evaluate(() => {
+    // Señal definitiva: mapa de Google
+    if (document.querySelector('iframe[src*="google.com/maps"], iframe[src*="maps.googleapis"], a[href*="maps.google"], a[href*="goo.gl/maps"], a[href*="maps.app.goo.gl"]'))
+      return { tiene: true, como: 'Mapa de Google embebido o enlace' };
+    // Schema.org PostalAddress
+    if (document.querySelector('[itemtype*="PostalAddress"], [itemprop="streetAddress"], [itemprop="addressLocality"]'))
+      return { tiene: true, como: 'Schema.org PostalAddress' };
+    // Etiqueta semantica <address>
+    if (document.querySelector('address'))
+      return { tiene: true, como: 'Etiqueta <address>' };
+    // Patrones en texto (2+ coincidencias)
+    const texto = document.body.innerText;
     const patrones = [
-      'calle ', 'av.', 'avenida', 'blvd', 'col.', 'colonia', 'c.p.', 'address',
-      'num.', '#', 'int.', 'ext.', 'local ', 'plaza ', 'edificio', 'piso ',
-      'cdmx', 'ciudad de mexico', 'guadalajara', 'monterrey', 'jalisco', 'nuevo leon',
-      'codigo postal', 'cp ', 'delegacion', 'alcaldia', 'municipio'
+      { re: /\bC\.?P\.?\s*\d{5}\b/i,                                                                    label: 'codigo postal' },
+      { re: /\b(calle|av\.|avenida|blvd\.?|boulevard|calzada|carretera|privada|andador|circuito|paseo)\b/i, label: 'tipo de via' },
+      { re: /#\s*\d+|\bNo\.?\s*\d+|\bInt\.?\s*\d+|\bExt\.?\s*\d+/i,                                   label: 'numeracion' },
+      { re: /\b(col\.|colonia|fracc\.|fraccionamiento|manzana|lote)\b/i,                                  label: 'colonia' },
+      { re: /\b(municipio|alcald[ií]a|delegaci[oó]n)\b/i,                                               label: 'municipio/alcaldia' },
     ];
-    const coincidencias = patrones.filter(p => texto.includes(p)).length;
-    return tieneEtiqueta || coincidencias >= 2;
+    const hits = patrones.filter(p => p.re.test(texto));
+    if (hits.length >= 2) return { tiene: true, como: `Patrones: ${hits.map(h => h.label).join(', ')}` };
+    return { tiene: false };
   });
-  checks.push({ nombre: 'Direccion fisica', estado: tieneDireccion ? 'OK' : 'ADVERTENCIA', detalle: tieneDireccion ? 'Se detecta informacion de direccion fisica' : 'No se detecto direccion fisica' });
+  checks.push({
+    nombre: 'Direccion fisica',
+    estado: dirInfo.tiene ? 'OK' : 'ADVERTENCIA',
+    detalle: dirInfo.tiene
+      ? `Direccion detectada — ${dirInfo.como}`
+      : 'Sin direccion fisica (mapa de Google, CP, calle, colonia...)'
+  });
 
+  // 5. Favicon
   const favicon = await page.evaluate(() => !!document.querySelector('link[rel*="icon"]'));
   checks.push({ nombre: 'Favicon', estado: favicon ? 'OK' : 'ADVERTENCIA', detalle: favicon ? 'Favicon configurado' : 'Sin favicon' });
 
+  // 6. Aviso de cookies / GDPR
   const tieneCookies = await page.evaluate(() => {
     const texto = document.body.innerText.toLowerCase();
     return !!document.querySelector('[class*="cookie"], [id*="cookie"], [class*="gdpr"], [class*="consent"], [class*="aviso"]') ||
@@ -72,8 +111,9 @@ async function checkNegocio({ url, page }) {
   });
   checks.push({ nombre: 'Aviso de cookies / GDPR', estado: tieneCookies ? 'OK' : 'ADVERTENCIA', detalle: tieneCookies ? 'Aviso de cookies detectado' : 'No se detecto aviso de cookies' });
 
+  // 7. Politica de privacidad
   const privacidad = await page.evaluate(() => {
-    const palabras = ['privacidad', 'privacy', 'aviso legal', 'politica', 'terminos', 'términos', 'cookies', 'aviso de privacidad', 'legal'];
+    const palabras = ['privacidad', 'privacy', 'aviso legal', 'politica', 'terminos', 'terminos', 'cookies', 'aviso de privacidad', 'legal'];
     const links = Array.from(document.querySelectorAll('a[href]'));
     const link = links.find(a =>
       palabras.some(p => a.textContent.toLowerCase().includes(p) || (a.href || '').toLowerCase().includes(p))
@@ -88,23 +128,23 @@ async function checkNegocio({ url, page }) {
       : 'Sin politica de privacidad o terminos — recomendado si tienes formularios o tracking'
   });
 
+  // 8. Redes sociales
   const redes = await page.evaluate(() => {
-    const dominios = {
-      facebook: 'facebook.com',
-      instagram: 'instagram.com',
-      youtube: 'youtube.com',
-      twitter: 'twitter.com',
-      tiktok: 'tiktok.com',
-      linkedin: 'linkedin.com',
-      pinterest: 'pinterest.com'
-    };
+    const plataformas = [
+      { nombre: 'Facebook',    dominios: ['facebook.com', 'fb.com', 'fb.me'] },
+      { nombre: 'Instagram',   dominios: ['instagram.com'] },
+      { nombre: 'YouTube',     dominios: ['youtube.com', 'youtu.be'] },
+      { nombre: 'Twitter / X', dominios: ['twitter.com', 'x.com'] },
+      { nombre: 'TikTok',      dominios: ['tiktok.com'] },
+      { nombre: 'LinkedIn',    dominios: ['linkedin.com'] },
+      { nombre: 'Pinterest',   dominios: ['pinterest.com'] },
+      { nombre: 'Telegram',    dominios: ['t.me', 'telegram.me'] },
+    ];
     const links = Array.from(document.querySelectorAll('a[href]'));
-    return Object.entries(dominios)
-      .map(([red, dominio]) => {
-        const link = links.find(a => (a.href || '').includes(dominio));
-        return link ? { red, url: link.href } : null;
-      })
-      .filter(Boolean);
+    return plataformas.map(({ nombre, dominios }) => {
+      const link = links.find(a => dominios.some(d => (a.href || '').toLowerCase().includes(d)));
+      return link ? { red: nombre, url: link.href } : null;
+    }).filter(Boolean);
   });
   checks.push({
     nombre: 'Links a redes sociales',
@@ -115,6 +155,7 @@ async function checkNegocio({ url, page }) {
     items: redes.map(r => `${r.red}: ${r.url}`)
   });
 
+  // 9. SSL
   const sslInfo = await verificarSSL(url);
   checks.push(sslInfo);
 
@@ -129,8 +170,8 @@ function verificarSSL(url) {
         const cert = socket.getPeerCertificate(); socket.destroy();
         if (!cert || !cert.valid_to) return resolve({ nombre: 'Certificado SSL', estado: 'ADVERTENCIA', detalle: 'No se pudo obtener info del certificado' });
         const dias = Math.floor((new Date(cert.valid_to) - new Date()) / (1000 * 60 * 60 * 24));
-        if (dias < 0) resolve({ nombre: 'Certificado SSL', estado: 'ERROR', detalle: 'El certificado SSL ha EXPIRADO' });
-        else if (dias < 15) resolve({ nombre: 'Certificado SSL', estado: 'ERROR', detalle: `Vence en ${dias} dias — URGENTE renovar` });
+        if (dias < 0)  resolve({ nombre: 'Certificado SSL', estado: 'ERROR',       detalle: 'El certificado SSL ha EXPIRADO' });
+        else if (dias < 15) resolve({ nombre: 'Certificado SSL', estado: 'ERROR',  detalle: `Vence en ${dias} dias — URGENTE renovar` });
         else if (dias < 30) resolve({ nombre: 'Certificado SSL', estado: 'ADVERTENCIA', detalle: `Vence en ${dias} dias — renovar pronto` });
         else resolve({ nombre: 'Certificado SSL', estado: 'OK', detalle: `Valido, vence en ${dias} dias` });
       });
