@@ -68,6 +68,7 @@ async function checkRendimiento({ page }) {
     items: imagenesProblematicas.map(i => `${i.nombre}: ${i.problemas.join(' | ')}`)
   });
 
+  // Scripts de terceros — informativo (OK), solo listar
   const scriptsTerceros = await page.evaluate(() => {
     const dominio = window.location.hostname.replace('www.', '');
     return [...new Set(Array.from(document.querySelectorAll('script[src]'))
@@ -76,17 +77,27 @@ async function checkRendimiento({ page }) {
   });
   checks.push({
     nombre: 'Scripts de terceros',
-    estado: scriptsTerceros.length <= 5 ? 'OK' : scriptsTerceros.length <= 10 ? 'ADVERTENCIA' : 'ERROR',
-    detalle: `${scriptsTerceros.length} dominio(s) de terceros`,
+    estado: 'OK',
+    detalle: scriptsTerceros.length === 0
+      ? 'Sin scripts de terceros'
+      : `${scriptsTerceros.length} dominio(s) de terceros (informativo)`,
     items: scriptsTerceros
   });
 
+  // Google Fonts — informativo (OK), el check de fuentes >3 ya cubre el problema real
   const googleFonts = await page.evaluate(() =>
     Array.from(document.querySelectorAll('link[href*="fonts.googleapis.com"]')).length > 0 ||
     Array.from(document.querySelectorAll('style')).some(s => s.textContent.includes('fonts.googleapis.com'))
   );
-  checks.push({ nombre: 'Google Fonts', estado: googleFonts ? 'ADVERTENCIA' : 'OK', detalle: googleFonts ? 'Google Fonts — hospedar localmente mejora velocidad' : 'Sin Google Fonts externos' });
+  checks.push({
+    nombre: 'Google Fonts',
+    estado: 'OK',
+    detalle: googleFonts
+      ? 'Google Fonts detectados — hospedar localmente mejora velocidad (informativo)'
+      : 'Sin Google Fonts externos'
+  });
 
+  // Fuentes tipograficas — mas de 3 si es problema real
   const fuentes = await page.evaluate(() => {
     const ff = new Set();
     for (const el of document.querySelectorAll('h1,h2,h3,p,span,button,a')) {
@@ -98,7 +109,9 @@ async function checkRendimiento({ page }) {
   checks.push({
     nombre: 'Fuentes tipograficas',
     estado: fuentes.length <= 3 ? 'OK' : 'ADVERTENCIA',
-    detalle: fuentes.length <= 3 ? `${fuentes.length} fuente(s) — correcto` : `${fuentes.length} fuentes — mas de 3 afecta velocidad`,
+    detalle: fuentes.length <= 3
+      ? `${fuentes.length} fuente(s) — correcto`
+      : `${fuentes.length} fuentes — mas de 3 afecta consistencia y velocidad`,
     items: fuentes
   });
 
