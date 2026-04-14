@@ -5,12 +5,16 @@
 async function checkTracking({ page }) {
   const checks = [];
 
+  // Esperar que scripts asíncronos (Meta Pixel, GTM, GA4, etc.) terminen de inicializarse
+  try { await page.waitForTimeout(3000); } catch {}
+
   const trackingData = await page.evaluate(() => {
     const resultado = {};
 
     // META PIXEL
     const metaPixel = { detectado: false, pixelId: null, eventos: [], capiSignal: false };
-    if (window.fbq || window._fbq) {
+    const allScriptText = Array.from(document.querySelectorAll('script:not([src])')).map(s => s.textContent).join(' ');
+    if (window.fbq || window._fbq || allScriptText.includes('fbq(') || document.querySelector('script[src*="connect.facebook.net"]')) {
       metaPixel.detectado = true;
       try {
         if (window.fbq?.getState?.()) {
@@ -25,27 +29,27 @@ async function checkTracking({ page }) {
         }
       }
       try {
-        const scriptTexts = Array.from(document.querySelectorAll('script:not([src])')).map(s => s.textContent).join(' ');
-        for (const m of scriptTexts.matchAll(/fbq\s*\(\s*['"]track['"]\s*,\s*['"](\w+)['"]\s*/g)) {
+        for (const m of allScriptText.matchAll(/fbq\s*\(\s*['"]track['"]\s*,\s*['"](\w+)['"]\s*/g)) {
           if (!metaPixel.eventos.includes(m[1])) metaPixel.eventos.push(m[1]);
         }
-        metaPixel.capiSignal = scriptTexts.includes('event_id') || scriptTexts.includes('eventID');
+        metaPixel.capiSignal = allScriptText.includes('event_id') || allScriptText.includes('eventID');
       } catch {}
     }
     resultado.metaPixel = metaPixel;
 
     // GA4
     const ga4 = { detectado: false, measurementId: null, eventos: [] };
-    if (window.gtag || window.dataLayer) {
+    if (window.gtag || window.dataLayer || document.querySelector('script[src*="googletagmanager"], script[src*="google-analytics"]')) {
       for (const s of document.querySelectorAll('script[src*="googletagmanager"], script[src*="google-analytics"]')) {
         const match = (s.src || '').match(/[?&]id=(G-[A-Z0-9]+)/);
         if (match) { ga4.detectado = true; ga4.measurementId = match[1]; break; }
       }
       if (!ga4.measurementId) {
-        const t = Array.from(document.querySelectorAll('script:not([src])')).map(s => s.textContent).join(' ');
-        const m = t.match(/['"](G-[A-Z0-9]{6,})/);
+        const t = allScriptText;
+        const m = t.match(/['"]?(G-[A-Z0-9]{6,})/);
         if (m) { ga4.detectado = true; ga4.measurementId = m[1]; }
       }
+      if (!ga4.detectado && (window.gtag || window.dataLayer)) ga4.detectado = true;
       if (window.dataLayer) {
         for (const e of window.dataLayer) {
           if (e.event && !['gtm.js','gtm.dom','gtm.load','gtm.click','gtm.scroll'].includes(e.event)) {
@@ -70,23 +74,26 @@ async function checkTracking({ page }) {
         gtm.detectado = true; gtm.containerId = m ? m[1] : 'ID no extraible';
       }
     }
+    if (!gtm.detectado) {
+      const m = allScriptText.match(/(GTM-[A-Z0-9]+)/);
+      if (m) { gtm.detectado = true; gtm.containerId = m[1]; }
+    }
     resultado.gtm = gtm;
 
     // Google Ads
     const googleAds = { detectado: false, conversionId: null, eventos: [] };
-    const scriptTextos = Array.from(document.querySelectorAll('script:not([src])')).map(s => s.textContent).join(' ');
-    const adsMatch = scriptTextos.match(/['"](AW-\d{7,11})/);
+    const adsMatch = allScriptText.match(/['"]?(AW-\d{7,11})/);
     if (adsMatch) { googleAds.detectado = true; googleAds.conversionId = adsMatch[1]; }
     resultado.googleAds = googleAds;
 
     // TikTok
     const tiktok = { detectado: false, pixelId: null, eventos: [] };
-    if (window.ttq || window.TiktokAnalyticsObject) {
+    if (window.ttq || window.TiktokAnalyticsObject || allScriptText.includes('ttq.load') || document.querySelector('script[src*="analytics.tiktok.com"]')) {
       tiktok.detectado = true;
-      const m = scriptTextos.match(/ttq\.load\s*\(\s*['"]([A-Z0-9]{15,})['"]/);
+      const m = allScriptText.match(/ttq\.load\s*\(\s*['"](\w{15,})['"]/);
       if (m) tiktok.pixelId = m[1];
       try {
-        for (const e of scriptTextos.matchAll(/ttq\.track\s*\(\s*['"](\w+)['"]\s*/g)) {
+        for (const e of allScriptText.matchAll(/ttq\.track\s*\(\s*['"](\w+)['"]\s*/g)) {
           if (!tiktok.eventos.includes(e[1])) tiktok.eventos.push(e[1]);
         }
       } catch {}
@@ -95,18 +102,18 @@ async function checkTracking({ page }) {
 
     // LinkedIn
     const linkedin = { detectado: false, partnerId: null };
-    if (window._linkedin_data_partner_ids || document.querySelector('script[src*="snap.licdn.com"]')) {
+    if (window._linkedin_data_partner_ids || document.querySelector('script[src*="snap.licdn.com"]') || allScriptText.includes('linkedin')) {
       linkedin.detectado = true;
       if (window._linkedin_data_partner_ids?.[0]) linkedin.partnerId = window._linkedin_data_partner_ids[0];
     }
     resultado.linkedin = linkedin;
 
     // Clarity
-    const clarity = { detectado: !!(window.clarity || document.querySelector('script[src*="clarity.ms"]')) };
+    const clarity = { detectado: !!(window.clarity || document.querySelector('script[src*="clarity.ms"]') || allScriptText.includes('clarity.ms')) };
     resultado.clarity = clarity;
 
     // Hotjar
-    const hotjar = { detectado: !!(window.hj || window._hjSettings || document.querySelector('script[src*="hotjar.com"]')), siteId: window._hjSettings?.hjid || null };
+    const hotjar = { detectado: !!(window.hj || window._hjSettings || document.querySelector('script[src*="hotjar.com"]') || allScriptText.includes('hotjar.com')), siteId: window._hjSettings?.hjid || null };
     resultado.hotjar = hotjar;
 
     // Scripts desconocidos

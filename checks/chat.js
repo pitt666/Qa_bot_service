@@ -1,6 +1,7 @@
 /**
  * SECCION 6 — CHAT Y ATENCION
  * Detecta herramientas de chat instaladas
+ * (informativo: no penaliza si no hay chat)
  */
 
 async function checkChat({ page }) {
@@ -24,10 +25,10 @@ async function checkChat({ page }) {
 
   checks.push({
     nombre: 'Herramientas de chat',
-    estado: herramientas.length > 0 ? 'OK' : 'ADVERTENCIA',
+    estado: 'OK',
     detalle: herramientas.length > 0
       ? `Detectado: ${herramientas.join(', ')}`
-      : 'No se detecto ninguna herramienta de chat o atencion al cliente',
+      : 'Sin herramienta de chat instalada (informativo)',
     items: herramientas.length > 0 ? herramientas : undefined
   });
 

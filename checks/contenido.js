@@ -72,13 +72,29 @@ async function checkContenido({ page }) {
   }
 
   // 4. Logo enlaza al home
+  // Selectores expandidos: WordPress (.custom-logo-link), Elementor, Bootstrap, temas genéricos
   const logoInfo = await page.evaluate(() => {
     let enlazaHome = false;
-    for (const el of document.querySelectorAll('a img, header a, .logo a, a.logo, a[href="/"]')) {
+    const selectors = [
+      '.custom-logo-link',
+      '.site-logo a',
+      '.site-branding a',
+      '.navbar-brand',
+      '[class*="logo"] a',
+      'a[class*="logo"]',
+      'header a',
+      '.logo a',
+      'a.logo',
+      'a[href="/"]',
+      'a img'
+    ].join(', ');
+    for (const el of document.querySelectorAll(selectors)) {
       const link = el.tagName === 'A' ? el : el.closest('a');
       if (!link) continue;
-      const href = link.getAttribute('href');
-      enlazaHome = href === '/' || href === '' || link.href === window.location.origin + '/';
+      const href = link.getAttribute('href') || '';
+      enlazaHome = href === '/' || href === '' ||
+        href === window.location.origin + '/' ||
+        link.href === window.location.origin + '/';
       if (enlazaHome) break;
     }
     return { enlazaHome };
