@@ -33,7 +33,7 @@ async function checkNegocio({ url, page }) {
     items: whatsappInfo.numeros.map(n => `${n.numero} — "${n.texto}" (${n.ubicacion})`)
   });
 
-  // 2. Telefono clickeable — solo href=tel:
+  // 2. Telefono clickeable
   const telefonosInfo = await page.evaluate(() => {
     const clickeables = Array.from(document.querySelectorAll('a[href^="tel:"]')).map(a => ({
       numero: decodeURIComponent(a.href.replace('tel:', '').trim()),
@@ -46,11 +46,11 @@ async function checkNegocio({ url, page }) {
     estado: telefonosInfo.clickeables.length > 0 ? 'OK' : 'ADVERTENCIA',
     detalle: telefonosInfo.clickeables.length > 0
       ? `${telefonosInfo.clickeables.length} numero(s) con href=tel:`
-      : 'Sin telefono clickeable — agregar <a href="tel:..."> para que funcione en mobile',
+      : 'Sin telefono clickeable — agregar <a href="tel:..."> para mobile',
     items: telefonosInfo.clickeables.map(t => `${t.numero}${t.texto ? ` — "${t.texto}"` : ''}`)
   });
 
-  // 3. Correo clickeable — solo href=mailto:
+  // 3. Correo clickeable
   const emailInfo = await page.evaluate(() => {
     const clickeables = Array.from(document.querySelectorAll('a[href^="mailto:"]')).map(a => ({
       email: decodeURIComponent(a.href.replace('mailto:', '').split('?')[0].trim()),
@@ -67,25 +67,21 @@ async function checkNegocio({ url, page }) {
     items: emailInfo.clickeables.map(e => `${e.email}${e.texto ? ` — "${e.texto}"` : ''}`)
   });
 
-  // 4. Direccion fisica — patrones estructurales, sin nombres de ciudades
+  // 4. Direccion fisica
   const dirInfo = await page.evaluate(() => {
-    // Señal definitiva: mapa de Google
     if (document.querySelector('iframe[src*="google.com/maps"], iframe[src*="maps.googleapis"], a[href*="maps.google"], a[href*="goo.gl/maps"], a[href*="maps.app.goo.gl"]'))
       return { tiene: true, como: 'Mapa de Google embebido o enlace' };
-    // Schema.org PostalAddress
     if (document.querySelector('[itemtype*="PostalAddress"], [itemprop="streetAddress"], [itemprop="addressLocality"]'))
       return { tiene: true, como: 'Schema.org PostalAddress' };
-    // Etiqueta semantica <address>
     if (document.querySelector('address'))
       return { tiene: true, como: 'Etiqueta <address>' };
-    // Patrones en texto (2+ coincidencias)
     const texto = document.body.innerText;
     const patrones = [
-      { re: /\bC\.?P\.?\s*\d{5}\b/i,                                                                    label: 'codigo postal' },
+      { re: /\bC\.?P\.?\s*\d{5}\b/i, label: 'codigo postal' },
       { re: /\b(calle|av\.|avenida|blvd\.?|boulevard|calzada|carretera|privada|andador|circuito|paseo)\b/i, label: 'tipo de via' },
-      { re: /#\s*\d+|\bNo\.?\s*\d+|\bInt\.?\s*\d+|\bExt\.?\s*\d+/i,                                   label: 'numeracion' },
-      { re: /\b(col\.|colonia|fracc\.|fraccionamiento|manzana|lote)\b/i,                                  label: 'colonia' },
-      { re: /\b(municipio|alcald[ií]a|delegaci[oó]n)\b/i,                                               label: 'municipio/alcaldia' },
+      { re: /#\s*\d+|\bNo\.?\s*\d+|\bInt\.?\s*\d+|\bExt\.?\s*\d+/i, label: 'numeracion' },
+      { re: /\b(col\.|colonia|fracc\.|fraccionamiento|manzana|lote)\b/i, label: 'colonia' },
+      { re: /\b(municipio|alcald[i\u00ed]a|delegaci[o\u00f3]n)\b/i, label: 'municipio/alcaldia' },
     ];
     const hits = patrones.filter(p => p.re.test(texto));
     if (hits.length >= 2) return { tiene: true, como: `Patrones: ${hits.map(h => h.label).join(', ')}` };
@@ -94,14 +90,23 @@ async function checkNegocio({ url, page }) {
   checks.push({
     nombre: 'Direccion fisica',
     estado: dirInfo.tiene ? 'OK' : 'ADVERTENCIA',
-    detalle: dirInfo.tiene
-      ? `Direccion detectada — ${dirInfo.como}`
-      : 'Sin direccion fisica (mapa de Google, CP, calle, colonia...)'
+    detalle: dirInfo.tiene ? `Direccion detectada — ${dirInfo.como}` : 'Sin direccion fisica (mapa, CP, calle, colonia...)'
   });
 
-  // 5. Favicon
-  const favicon = await page.evaluate(() => !!document.querySelector('link[rel*="icon"]'));
-  checks.push({ nombre: 'Favicon', estado: favicon ? 'OK' : 'ADVERTENCIA', detalle: favicon ? 'Favicon configurado' : 'Sin favicon' });
+  // 5. Favicon — link rel="icon" O /favicon.ico
+  const favicon = await page.evaluate(async () => {
+    if (document.querySelector('link[rel*="icon"]')) return { ok: true, como: 'tag <link rel="icon">' };
+    try {
+      const r = await fetch('/favicon.ico', { method: 'HEAD', cache: 'no-cache' });
+      if (r.ok) return { ok: true, como: '/favicon.ico disponible' };
+    } catch {}
+    return { ok: false };
+  });
+  checks.push({
+    nombre: 'Favicon',
+    estado: favicon.ok ? 'OK' : 'ADVERTENCIA',
+    detalle: favicon.ok ? `Favicon configurado — ${favicon.como}` : 'Sin favicon'
+  });
 
   // 6. Aviso de cookies / GDPR
   const tieneCookies = await page.evaluate(() => {
@@ -111,21 +116,26 @@ async function checkNegocio({ url, page }) {
   });
   checks.push({ nombre: 'Aviso de cookies / GDPR', estado: tieneCookies ? 'OK' : 'ADVERTENCIA', detalle: tieneCookies ? 'Aviso de cookies detectado' : 'No se detecto aviso de cookies' });
 
-  // 7. Politica de privacidad
-  const privacidad = await page.evaluate(() => {
-    const palabras = ['privacidad', 'privacy', 'aviso legal', 'politica', 'terminos', 'terminos', 'cookies', 'aviso de privacidad', 'legal'];
+  // 7. Documentos legales — privacidad OR terminos obligatorio, cookies bonus
+  const legal = await page.evaluate(() => {
     const links = Array.from(document.querySelectorAll('a[href]'));
-    const link = links.find(a =>
+    const check = (palabras) => links.some(a =>
       palabras.some(p => a.textContent.toLowerCase().includes(p) || (a.href || '').toLowerCase().includes(p))
     );
-    return link ? { encontrado: true, texto: link.textContent.trim().slice(0, 60) } : { encontrado: false };
+    return {
+      privacidad: check(['privacidad', 'privacy', 'aviso de privacidad', 'aviso-de-privacidad', 'politica de privacidad', 'politica-de-privacidad']),
+      terminos: check(['terminos', 't\u00e9rminos', 'terms', 'condiciones', 'conditions', 'aviso legal', 'aviso-legal']),
+      cookies: check(['cookies', 'politica de cookies', 'cookie policy', 'cookie-policy'])
+    };
   });
+  const tieneAlguno = legal.privacidad || legal.terminos;
+  const encontrados = [legal.privacidad && 'Privacidad', legal.terminos && 'Terminos', legal.cookies && 'Cookies'].filter(Boolean);
   checks.push({
-    nombre: 'Politica de privacidad / Terminos',
-    estado: privacidad.encontrado ? 'OK' : 'ADVERTENCIA',
-    detalle: privacidad.encontrado
-      ? `Enlace encontrado: "${privacidad.texto}"`
-      : 'Sin politica de privacidad o terminos — recomendado si tienes formularios o tracking'
+    nombre: 'Documentos legales',
+    estado: tieneAlguno ? 'OK' : 'ERROR',
+    detalle: tieneAlguno
+      ? `Encontrado: ${encontrados.join(', ')}`
+      : 'Sin politica de privacidad ni terminos — obligatorio si tienes formularios o datos de usuarios'
   });
 
   // 8. Redes sociales
@@ -150,7 +160,7 @@ async function checkNegocio({ url, page }) {
     nombre: 'Links a redes sociales',
     estado: redes.length > 0 ? 'OK' : 'ADVERTENCIA',
     detalle: redes.length > 0
-      ? `${redes.length} red(es) detectada(s): ${redes.map(r => r.red).join(', ')}`
+      ? `${redes.length} red(es): ${redes.map(r => r.red).join(', ')}`
       : 'No se detectaron links a redes sociales',
     items: redes.map(r => `${r.red}: ${r.url}`)
   });
@@ -170,10 +180,10 @@ function verificarSSL(url) {
         const cert = socket.getPeerCertificate(); socket.destroy();
         if (!cert || !cert.valid_to) return resolve({ nombre: 'Certificado SSL', estado: 'ADVERTENCIA', detalle: 'No se pudo obtener info del certificado' });
         const dias = Math.floor((new Date(cert.valid_to) - new Date()) / (1000 * 60 * 60 * 24));
-        if (dias < 0)  resolve({ nombre: 'Certificado SSL', estado: 'ERROR',       detalle: 'El certificado SSL ha EXPIRADO' });
-        else if (dias < 15) resolve({ nombre: 'Certificado SSL', estado: 'ERROR',  detalle: `Vence en ${dias} dias — URGENTE renovar` });
+        if (dias < 0)       resolve({ nombre: 'Certificado SSL', estado: 'ERROR',       detalle: 'El certificado SSL ha EXPIRADO' });
+        else if (dias < 15) resolve({ nombre: 'Certificado SSL', estado: 'ERROR',       detalle: `Vence en ${dias} dias — URGENTE renovar` });
         else if (dias < 30) resolve({ nombre: 'Certificado SSL', estado: 'ADVERTENCIA', detalle: `Vence en ${dias} dias — renovar pronto` });
-        else resolve({ nombre: 'Certificado SSL', estado: 'OK', detalle: `Valido, vence en ${dias} dias` });
+        else                resolve({ nombre: 'Certificado SSL', estado: 'OK',          detalle: `Valido, vence en ${dias} dias` });
       });
       socket.on('error', () => resolve({ nombre: 'Certificado SSL', estado: 'ADVERTENCIA', detalle: 'No se pudo verificar el certificado' }));
       socket.setTimeout(5000, () => { socket.destroy(); resolve({ nombre: 'Certificado SSL', estado: 'ADVERTENCIA', detalle: 'Timeout al verificar SSL' }); });

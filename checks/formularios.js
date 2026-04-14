@@ -37,7 +37,7 @@ async function checkFormularios({ page, context, mailtrap_token, mailtrap_inbox_
   }
 
   const tienePaginaGracias = await page.evaluate(() => {
-    const palabras = ['gracias','thank','thanks','confirmacion','confirmation','exito','success'];
+    const palabras = ['gracias','thank','thanks','confirmacion','confirmation','exito','success','order-received'];
     return Array.from(document.querySelectorAll('a[href]')).some(a =>
       palabras.some(p => (a.href||'').toLowerCase().includes(p) || (a.textContent||'').toLowerCase().includes(p))
     );
@@ -48,14 +48,26 @@ async function checkFormularios({ page, context, mailtrap_token, mailtrap_inbox_
     detalle: tienePaginaGracias ? 'Pagina de gracias detectada' : 'No se detecto pagina de gracias — el Pixel y GA4 no pueden trackear conversiones'
   });
 
-  const tieneRecaptcha = await page.evaluate(() =>
-    !!(document.querySelector('.g-recaptcha, [data-sitekey], iframe[src*="recaptcha"], iframe[src*="hcaptcha"]') ||
-      window.grecaptcha || document.querySelector('script[src*="recaptcha"], script[src*="hcaptcha"]'))
-  );
+  // Anti-spam: reCAPTCHA, hCaptcha, CleanTalk, Turnstile, Akismet
+  const antiSpam = await page.evaluate(() => {
+    if (document.querySelector('.g-recaptcha, [data-sitekey], iframe[src*="recaptcha"], iframe[src*="hcaptcha"]') ||
+        window.grecaptcha || document.querySelector('script[src*="recaptcha"], script[src*="hcaptcha"]'))
+      return { tiene: true, cual: 'reCAPTCHA / hCaptcha' };
+    if (document.querySelector('script[src*="cleantalk.org"], script[src*="moderate.cleantalk"], script[src*="apbct"]') ||
+        document.querySelector('[name*="ct_checkjs"], [name*="apbct_visible_fields_count"]') || window.ctcc)
+      return { tiene: true, cual: 'CleanTalk' };
+    if (document.querySelector('.cf-turnstile, script[src*="challenges.cloudflare.com"]'))
+      return { tiene: true, cual: 'Cloudflare Turnstile' };
+    if (document.querySelector('script[src*="akismet"]'))
+      return { tiene: true, cual: 'Akismet' };
+    return { tiene: false, cual: null };
+  });
   checks.push({
     nombre: 'Proteccion anti-spam',
-    estado: formularios.length > 0 && !tieneRecaptcha ? 'ADVERTENCIA' : 'OK',
-    detalle: tieneRecaptcha ? 'reCAPTCHA o proteccion anti-spam detectada' : formularios.length > 0 ? 'Sin reCAPTCHA — los formularios pueden recibir spam' : 'No aplica'
+    estado: formularios.length > 0 && !antiSpam.tiene ? 'ADVERTENCIA' : 'OK',
+    detalle: antiSpam.tiene
+      ? `Anti-spam detectado: ${antiSpam.cual}`
+      : formularios.length > 0 ? 'Sin proteccion anti-spam — formularios expuestos a spam' : 'No aplica'
   });
 
   return { nombre: 'Formularios y Conversion', estado: calcularEstado(checks), checks };
@@ -91,7 +103,7 @@ async function intentarEnvioFormulario(page, formulario, mailtrap_token, mailtra
     ]);
     const paginaDespues = page.url();
     const redirigioAGracias = paginaDespues !== paginaAntes &&
-      ['gracias','thank','thanks','confirmacion','success','exito'].some(p => paginaDespues.toLowerCase().includes(p));
+      ['gracias','thank','thanks','confirmacion','success','exito','order-received'].some(p => paginaDespues.toLowerCase().includes(p));
     let emailLlego = false, detalleMailtrap = '';
     try {
       const r = await fetch(`https://mailtrap.io/api/accounts/1/inboxes/${mailtrap_inbox_id}/messages`, { headers: { 'Api-Token': mailtrap_token } });
@@ -104,7 +116,7 @@ async function intentarEnvioFormulario(page, formulario, mailtrap_token, mailtra
     return {
       nombre: 'Prueba de envio real',
       estado: redirigioAGracias || emailLlego ? 'OK' : 'ADVERTENCIA',
-      detalle: `Formulario enviado.${redirigioAGracias ? ` Redirige a: ${paginaDespues}` : ' Sin redireccion a pagina de gracias.'}${detalleMailtrap}`
+      detalle: `Formulario enviado.${redirigioAGracias ? ` Redirige a: ${paginaDespues}` : ' Sin redireccion.'}${detalleMailtrap}`
     };
   } catch (e) {
     return { nombre: 'Prueba de envio real', estado: 'ADVERTENCIA', detalle: `No se pudo completar: ${e.message}` };
