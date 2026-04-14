@@ -6,7 +6,7 @@ const tls = require('tls');
 async function checkNegocio({ url, page }) {
   const checks = [];
 
-  // 1. WhatsApp
+  // 1. WhatsApp — INFORMATIVO (no todo negocio lo usa)
   const whatsappInfo = await page.evaluate(() => {
     const links = Array.from(document.querySelectorAll(
       'a[href*="wa.me"], a[href*="api.whatsapp.com"], a[href*="whatsapp.com/send"], a[href*="wa.link"], a[href*="web.whatsapp.com"]'
@@ -24,16 +24,17 @@ async function checkNegocio({ url, page }) {
     );
     return { numeros, widgetDetectado: widgets.length > 0 };
   });
+  const tieneWA = whatsappInfo.numeros.length > 0 || whatsappInfo.widgetDetectado;
   checks.push({
     nombre: 'WhatsApp',
-    estado: whatsappInfo.numeros.length > 0 || whatsappInfo.widgetDetectado ? 'OK' : 'ADVERTENCIA',
-    detalle: whatsappInfo.numeros.length > 0 || whatsappInfo.widgetDetectado
+    estado: tieneWA ? 'OK' : 'INFORMATIVO',
+    detalle: tieneWA
       ? `${whatsappInfo.numeros.length} boton(es) de WhatsApp${whatsappInfo.widgetDetectado ? ' + widget flotante' : ''}`
-      : 'No se detectaron botones de WhatsApp',
+      : 'Sin boton de WhatsApp (informativo)',
     items: whatsappInfo.numeros.map(n => `${n.numero} — "${n.texto}" (${n.ubicacion})`)
   });
 
-  // 2. Telefono clickeable
+  // 2. Telefono clickeable — real check
   const telefonosInfo = await page.evaluate(() => {
     const clickeables = Array.from(document.querySelectorAll('a[href^="tel:"]')).map(a => ({
       numero: decodeURIComponent(a.href.replace('tel:', '').trim()),
@@ -50,7 +51,7 @@ async function checkNegocio({ url, page }) {
     items: telefonosInfo.clickeables.map(t => `${t.numero}${t.texto ? ` — "${t.texto}"` : ''}`)
   });
 
-  // 3. Correo clickeable
+  // 3. Correo clickeable — INFORMATIVO
   const emailInfo = await page.evaluate(() => {
     const clickeables = Array.from(document.querySelectorAll('a[href^="mailto:"]')).map(a => ({
       email: decodeURIComponent(a.href.replace('mailto:', '').split('?')[0].trim()),
@@ -60,14 +61,14 @@ async function checkNegocio({ url, page }) {
   });
   checks.push({
     nombre: 'Correo clickeable',
-    estado: emailInfo.clickeables.length > 0 ? 'OK' : 'ADVERTENCIA',
+    estado: emailInfo.clickeables.length > 0 ? 'OK' : 'INFORMATIVO',
     detalle: emailInfo.clickeables.length > 0
       ? `${emailInfo.clickeables.length} correo(s) con href=mailto:`
-      : 'Sin correo clickeable — agregar <a href="mailto:..."> si se muestra un email',
+      : 'Sin correo clickeable (informativo)',
     items: emailInfo.clickeables.map(e => `${e.email}${e.texto ? ` — "${e.texto}"` : ''}`)
   });
 
-  // 4. Direccion fisica
+  // 4. Direccion fisica — INFORMATIVO (negocios online no la tienen)
   const dirInfo = await page.evaluate(() => {
     if (document.querySelector('iframe[src*="google.com/maps"], iframe[src*="maps.googleapis"], a[href*="maps.google"], a[href*="goo.gl/maps"], a[href*="maps.app.goo.gl"]'))
       return { tiene: true, como: 'Mapa de Google embebido o enlace' };
@@ -77,11 +78,11 @@ async function checkNegocio({ url, page }) {
       return { tiene: true, como: 'Etiqueta <address>' };
     const texto = document.body.innerText;
     const patrones = [
-      { re: /\bC\.?P\.?\s*\d{5}\b/i, label: 'codigo postal' },
+      { re: /\bC\.?P\.?\s*\d{5}\b/i,                                                             label: 'codigo postal' },
       { re: /\b(calle|av\.|avenida|blvd\.?|boulevard|calzada|carretera|privada|andador|circuito|paseo)\b/i, label: 'tipo de via' },
-      { re: /#\s*\d+|\bNo\.?\s*\d+|\bInt\.?\s*\d+|\bExt\.?\s*\d+/i, label: 'numeracion' },
-      { re: /\b(col\.|colonia|fracc\.|fraccionamiento|manzana|lote)\b/i, label: 'colonia' },
-      { re: /\b(municipio|alcald[i\u00ed]a|delegaci[o\u00f3]n)\b/i, label: 'municipio/alcaldia' },
+      { re: /#\s*\d+|\bNo\.?\s*\d+|\bInt\.?\s*\d+|\bExt\.?\s*\d+/i,                            label: 'numeracion' },
+      { re: /\b(col\.|colonia|fracc\.|fraccionamiento|manzana|lote)\b/i,                          label: 'colonia' },
+      { re: /\b(municipio|alcald[i\u00ed]a|delegaci[o\u00f3]n)\b/i,                               label: 'municipio/alcaldia' },
     ];
     const hits = patrones.filter(p => p.re.test(texto));
     if (hits.length >= 2) return { tiene: true, como: `Patrones: ${hits.map(h => h.label).join(', ')}` };
@@ -89,11 +90,13 @@ async function checkNegocio({ url, page }) {
   });
   checks.push({
     nombre: 'Direccion fisica',
-    estado: dirInfo.tiene ? 'OK' : 'ADVERTENCIA',
-    detalle: dirInfo.tiene ? `Direccion detectada — ${dirInfo.como}` : 'Sin direccion fisica (mapa, CP, calle, colonia...)'
+    estado: dirInfo.tiene ? 'OK' : 'INFORMATIVO',
+    detalle: dirInfo.tiene
+      ? `Direccion detectada — ${dirInfo.como}`
+      : 'Sin direccion fisica (informativo — no aplica para negocios online)'
   });
 
-  // 5. Favicon — link rel="icon" O /favicon.ico
+  // 5. Favicon — real check
   const favicon = await page.evaluate(async () => {
     if (document.querySelector('link[rel*="icon"]')) return { ok: true, como: 'tag <link rel="icon">' };
     try {
@@ -108,22 +111,28 @@ async function checkNegocio({ url, page }) {
     detalle: favicon.ok ? `Favicon configurado — ${favicon.como}` : 'Sin favicon'
   });
 
-  // 6. Aviso de cookies / GDPR
+  // 6. Aviso de cookies / GDPR — real check (requerido para Google Ads + Facebook Ads)
   const tieneCookies = await page.evaluate(() => {
     const texto = document.body.innerText.toLowerCase();
     return !!document.querySelector('[class*="cookie"], [id*="cookie"], [class*="gdpr"], [class*="consent"], [class*="aviso"]') ||
       ['cookie', 'consentimiento', 'aceptar', 'gdpr'].filter(p => texto.includes(p)).length >= 2;
   });
-  checks.push({ nombre: 'Aviso de cookies / GDPR', estado: tieneCookies ? 'OK' : 'ADVERTENCIA', detalle: tieneCookies ? 'Aviso de cookies detectado' : 'No se detecto aviso de cookies' });
+  checks.push({
+    nombre: 'Aviso de cookies / GDPR',
+    estado: tieneCookies ? 'OK' : 'ADVERTENCIA',
+    detalle: tieneCookies
+      ? 'Aviso de cookies detectado'
+      : 'Sin aviso de cookies — requerido para Google Ads y Facebook Ads (remarketing)'
+  });
 
-  // 7. Documentos legales — privacidad OR terminos obligatorio, cookies bonus
+  // 7. Documentos legales — real check (ERROR si no tiene ninguno)
   const legal = await page.evaluate(() => {
     const links = Array.from(document.querySelectorAll('a[href]'));
     const check = (palabras) => links.some(a =>
       palabras.some(p => a.textContent.toLowerCase().includes(p) || (a.href || '').toLowerCase().includes(p))
     );
     return {
-      privacidad: check(['privacidad', 'privacy', 'aviso de privacidad', 'aviso-de-privacidad', 'politica de privacidad', 'politica-de-privacidad']),
+      privacidad: check(['privacidad', 'privacy', 'aviso de privacidad', 'aviso-de-privacidad', 'politica de privacidad', 'politica-de-privacidad', 'politicas']),
       terminos: check(['terminos', 't\u00e9rminos', 'terms', 'condiciones', 'conditions', 'aviso legal', 'aviso-legal']),
       cookies: check(['cookies', 'politica de cookies', 'cookie policy', 'cookie-policy'])
     };
@@ -135,10 +144,10 @@ async function checkNegocio({ url, page }) {
     estado: tieneAlguno ? 'OK' : 'ERROR',
     detalle: tieneAlguno
       ? `Encontrado: ${encontrados.join(', ')}`
-      : 'Sin politica de privacidad ni terminos — obligatorio si tienes formularios o datos de usuarios'
+      : 'Sin politica de privacidad ni terminos — obligatorio si tienes formularios o tracking'
   });
 
-  // 8. Redes sociales
+  // 8. Redes sociales — real check
   const redes = await page.evaluate(() => {
     const plataformas = [
       { nombre: 'Facebook',    dominios: ['facebook.com', 'fb.com', 'fb.me'] },
@@ -192,8 +201,9 @@ function verificarSSL(url) {
 }
 
 function calcularEstado(checks) {
-  if (checks.some(c => c.estado === 'ERROR')) return 'ERROR';
-  if (checks.some(c => c.estado === 'ADVERTENCIA')) return 'ADVERTENCIA';
+  const reales = checks.filter(c => c.estado !== 'INFORMATIVO');
+  if (reales.some(c => c.estado === 'ERROR'))       return 'ERROR';
+  if (reales.some(c => c.estado === 'ADVERTENCIA')) return 'ADVERTENCIA';
   return 'OK';
 }
 
