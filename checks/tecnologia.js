@@ -1,144 +1,127 @@
 /**
  * SECCION 11 — TECNOLOGIA DETECTADA
- * CMS, framework, constructor de paginas, hosting signals, ecommerce
  */
-
 async function checkTecnologia({ page }) {
   const checks = [];
 
   const techData = await page.evaluate(() => {
-    const detectado = {};
+    const d = {};
     const scripts = Array.from(document.querySelectorAll('script[src]')).map(s => s.src.toLowerCase());
     const clases = document.body.className.toLowerCase() + ' ' + document.documentElement.className.toLowerCase();
-    const metaGenerator = document.querySelector('meta[name="generator"]')?.getAttribute('content') || '';
-    const htmlTexto = document.documentElement.outerHTML.toLowerCase();
+    const gen = document.querySelector('meta[name="generator"]')?.getAttribute('content') || '';
+    const html = document.documentElement.outerHTML.toLowerCase();
+    const ck = document.cookie.toLowerCase();
 
-    // ─── CMS ───
-    if (window.wp || htmlTexto.includes('wp-content') || htmlTexto.includes('wp-includes') || metaGenerator.toLowerCase().includes('wordpress')) {
-      detectado.cms = 'WordPress';
-    } else if (htmlTexto.includes('shopify') || window.Shopify) {
-      detectado.cms = 'Shopify';
-    } else if (htmlTexto.includes('squarespace') || window.Static || htmlTexto.includes('sqsp')) {
-      detectado.cms = 'Squarespace';
-    } else if (window.wixBiSession || htmlTexto.includes('wix.com') || htmlTexto.includes('_wix_')) {
-      detectado.cms = 'Wix';
-    } else if (htmlTexto.includes('webflow') || htmlTexto.includes('data-wf-page')) {
-      detectado.cms = 'Webflow';
-    } else if (htmlTexto.includes('framer') || window.__framer_importFromPackage) {
-      detectado.cms = 'Framer';
-    } else if (metaGenerator.toLowerCase().includes('joomla') || htmlTexto.includes('/media/jui/')) {
-      detectado.cms = 'Joomla';
-    } else if (metaGenerator.toLowerCase().includes('drupal') || htmlTexto.includes('/sites/default/files/')) {
-      detectado.cms = 'Drupal';
-    } else if (htmlTexto.includes('ghost.io') || window.ghost) {
-      detectado.cms = 'Ghost';
+    // CMS
+    if (window.wp || html.includes('wp-content') || html.includes('wp-includes') || gen.toLowerCase().includes('wordpress')) d.cms = 'WordPress';
+    else if (html.includes('shopify') || window.Shopify) d.cms = 'Shopify';
+    else if (html.includes('squarespace') || html.includes('sqsp')) d.cms = 'Squarespace';
+    else if (window.wixBiSession || html.includes('wix.com') || html.includes('_wix_')) d.cms = 'Wix';
+    else if (html.includes('webflow') || html.includes('data-wf-page')) d.cms = 'Webflow';
+    else if (html.includes('framer') || window.__framer_importFromPackage) d.cms = 'Framer';
+    else if (scripts.some(s => s.includes('js.hubspot.com/cms')) || (window.hbspt && html.includes('hs-sites.com'))) d.cms = 'HubSpot CMS';
+    else if (gen.toLowerCase().includes('joomla') || html.includes('/media/jui/')) d.cms = 'Joomla';
+    else if (gen.toLowerCase().includes('drupal') || html.includes('/sites/default/files/')) d.cms = 'Drupal';
+    else if (html.includes('ghost.io') || window.ghost) d.cms = 'Ghost';
+
+    // PAGE BUILDER
+    if (d.cms === 'WordPress') {
+      if (html.includes('elementor') || clases.includes('elementor'))       d.pageBuilder = 'Elementor';
+      else if (html.includes('divi') || html.includes('et_pb'))             d.pageBuilder = 'Divi';
+      else if (html.includes('wpbakery') || html.includes('vc_row'))        d.pageBuilder = 'WPBakery';
+      else if (html.includes('beaver') || html.includes('fl-builder'))      d.pageBuilder = 'Beaver Builder';
+      else if (html.includes('bricks') || html.includes('brxe-'))           d.pageBuilder = 'Bricks Builder';
+      else if (html.includes('oxygen') || html.includes('ct-section'))      d.pageBuilder = 'Oxygen';
+      else if (html.includes('gutenberg') || html.includes('wp-block-'))    d.pageBuilder = 'Gutenberg';
     }
 
-    // ─── CONSTRUCTOR DE PAGINAS (page builders) ───
-    if (detectado.cms === 'WordPress') {
-      if (htmlTexto.includes('elementor') || clases.includes('elementor')) {
-        detectado.pageBuilder = 'Elementor';
-      } else if (htmlTexto.includes('divi') || htmlTexto.includes('et_pb')) {
-        detectado.pageBuilder = 'Divi';
-      } else if (htmlTexto.includes('wpbakery') || htmlTexto.includes('vc_row')) {
-        detectado.pageBuilder = 'WPBakery';
-      } else if (htmlTexto.includes('beaver') || htmlTexto.includes('fl-builder')) {
-        detectado.pageBuilder = 'Beaver Builder';
-      } else if (htmlTexto.includes('bricks') || htmlTexto.includes('brxe-')) {
-        detectado.pageBuilder = 'Bricks Builder';
-      } else if (htmlTexto.includes('oxygen') || htmlTexto.includes('ct-section')) {
-        detectado.pageBuilder = 'Oxygen';
-      } else if (htmlTexto.includes('gutenberg') || htmlTexto.includes('wp-block-')) {
-        detectado.pageBuilder = 'Gutenberg (editor nativo)';
-      }
+    // FRAMEWORK JS
+    if (window.__NEXT_DATA__ || html.includes('_next/static'))                       d.frameworkJs = 'Next.js';
+    else if (window.__NUXT__ || html.includes('nuxt'))                               d.frameworkJs = 'Nuxt.js';
+    else if (window.__vue_meta_installed || html.includes('data-v-') || window.Vue)  d.frameworkJs = 'Vue.js';
+    else if (window.__REACT_DEVTOOLS_GLOBAL_HOOK__ || html.includes('__reactfiber')) d.frameworkJs = 'React';
+    else if (window.angular || html.includes('ng-version'))                          d.frameworkJs = 'Angular';
+    else if (window.svelte || html.includes('svelte'))                               d.frameworkJs = 'Svelte';
+    else if (window.Astro)                                                            d.frameworkJs = 'Astro';
+    else if (window.Remix)                                                            d.frameworkJs = 'Remix';
+
+    // FRAMEWORK PHP
+    if (!d.cms) {
+      if (ck.includes('xsrf-token') || ck.includes('laravel_session') || document.querySelector('meta[name="csrf-token"]'))
+        d.frameworkPhp = 'Laravel';
+      else if (ck.includes('ci_session') || ck.includes('ci_csrf_token'))
+        d.frameworkPhp = 'CodeIgniter';
+      else if (ck.includes('symfony') || html.includes('sf_redirect'))
+        d.frameworkPhp = 'Symfony';
+      else if (ck.includes('cakephp') || html.includes('cakephp'))
+        d.frameworkPhp = 'CakePHP';
     }
 
-    // ─── FRAMEWORK JS ───
-    if (window.__NEXT_DATA__ || htmlTexto.includes('_next/static')) {
-      detectado.framework = 'Next.js';
-    } else if (window.__NUXT__ || htmlTexto.includes('nuxt')) {
-      detectado.framework = 'Nuxt.js';
-    } else if (window.__vue_meta_installed || htmlTexto.includes('data-v-') || window.Vue) {
-      detectado.framework = 'Vue.js';
-    } else if (window.__REACT_DEVTOOLS_GLOBAL_HOOK__ || htmlTexto.includes('react-root') || htmlTexto.includes('__reactFiber')) {
-      detectado.framework = 'React';
-    } else if (window.angular || htmlTexto.includes('ng-version')) {
-      detectado.framework = 'Angular';
-    } else if (window.svelte || htmlTexto.includes('svelte')) {
-      detectado.framework = 'Svelte';
-    } else if (window.Astro) {
-      detectado.framework = 'Astro';
+    // HOSTING / DEPLOY
+    if (scripts.some(s => s.includes('vercel-analytics') || s.includes('vercel.live')) || html.includes('_vercel'))
+      d.hosting = 'Vercel';
+    else if (html.includes('netlify') || window.netlifyIdentity || scripts.some(s => s.includes('netlify')))
+      d.hosting = 'Netlify';
+    else if (html.includes('pages.dev') || html.includes('cloudflare-pages'))
+      d.hosting = 'Cloudflare Pages';
+
+    // ECOMMERCE
+    if (window.WooCommerce || (html.includes('woocommerce') && d.cms === 'WordPress')) d.ecommerce = 'WooCommerce';
+    else if (window.Shopify) d.ecommerce = 'Shopify';
+    else if (html.includes('tiendanube') || html.includes('nuvemshop')) d.ecommerce = 'Tienda Nube';
+    else if (html.includes('magento') || window.Magento) d.ecommerce = 'Magento';
+    else if (html.includes('prestashop') || window.prestashop) d.ecommerce = 'PrestaShop';
+
+    // CRM / MARKETING
+    const crms = [];
+    if (window.hbspt || scripts.some(s => s.includes('js.hubspot.com')))             crms.push('HubSpot');
+    if (scripts.some(s => s.includes('activecampaign.com')))                         crms.push('ActiveCampaign');
+    if (window._learnq || scripts.some(s => s.includes('klaviyo.com')))              crms.push('Klaviyo');
+    if (scripts.some(s => s.includes('mailchimp.com')))                              crms.push('Mailchimp');
+    if (scripts.some(s => s.includes('salesforce.com') || s.includes('pardot.com'))) crms.push('Salesforce/Pardot');
+    if (crms.length) d.crm = crms.join(', ');
+
+    // TEMA WORDPRESS
+    if (d.cms === 'WordPress') {
+      if (html.includes('ast-container') || html.includes('/astra'))  d.tema = 'Astra';
+      else if (html.includes('generatepress'))                         d.tema = 'GeneratePress';
+      else if (html.includes('hello-elementor'))                       d.tema = 'Hello Elementor';
+      else if (html.includes('storefront'))                            d.tema = 'Storefront';
+      else if (html.includes('flatsome'))                              d.tema = 'Flatsome';
+      else if (html.includes('avada'))                                 d.tema = 'Avada';
+      else if (html.includes('oceanwp'))                               d.tema = 'OceanWP';
     }
 
-    // ─── ECOMMERCE ───
-    if (window.WooCommerce || (htmlTexto.includes('woocommerce') && detectado.cms === 'WordPress')) {
-      detectado.ecommerce = 'WooCommerce';
-    } else if (window.Shopify) {
-      detectado.ecommerce = 'Shopify';
-    } else if (htmlTexto.includes('tiendanube') || htmlTexto.includes('nuvemshop')) {
-      detectado.ecommerce = 'Tienda Nube';
-    } else if (htmlTexto.includes('magento') || window.Magento) {
-      detectado.ecommerce = 'Magento';
-    } else if (htmlTexto.includes('prestashop') || window.prestashop) {
-      detectado.ecommerce = 'PrestaShop';
-    }
-
-    // ─── TEMAS POPULARES ───
-    if (detectado.cms === 'WordPress') {
-      if (htmlTexto.includes('astra') || htmlTexto.includes('ast-container')) detectado.tema = 'Astra';
-      else if (htmlTexto.includes('generatepress') || htmlTexto.includes('generate-')) detectado.tema = 'GeneratePress';
-      else if (htmlTexto.includes('hello-elementor')) detectado.tema = 'Hello Elementor';
-      else if (htmlTexto.includes('storefront')) detectado.tema = 'Storefront (WooCommerce)';
-      else if (htmlTexto.includes('flatsome')) detectado.tema = 'Flatsome';
-    }
-
-    // ─── META GENERATOR ───
-    if (metaGenerator) detectado.metaGenerator = metaGenerator;
-
-    return detectado;
+    if (gen) d.metaGenerator = gen;
+    return d;
   });
 
-  // Formatear resultado
-  const tecnologiasDetectadas = [];
-
-  if (techData.cms) tecnologiasDetectadas.push(`CMS: ${techData.cms}`);
-  if (techData.pageBuilder) tecnologiasDetectadas.push(`Constructor: ${techData.pageBuilder}`);
-  if (techData.framework) tecnologiasDetectadas.push(`Framework: ${techData.framework}`);
-  if (techData.ecommerce) tecnologiasDetectadas.push(`Ecommerce: ${techData.ecommerce}`);
-  if (techData.tema) tecnologiasDetectadas.push(`Tema: ${techData.tema}`);
-  if (techData.metaGenerator) tecnologiasDetectadas.push(`Generator: ${techData.metaGenerator}`);
+  const items = [
+    techData.cms          && `CMS: ${techData.cms}`,
+    techData.pageBuilder  && `Constructor: ${techData.pageBuilder}`,
+    techData.frameworkJs  && `Framework JS: ${techData.frameworkJs}`,
+    techData.frameworkPhp && `Framework PHP: ${techData.frameworkPhp}`,
+    techData.ecommerce    && `Ecommerce: ${techData.ecommerce}`,
+    techData.hosting      && `Hosting/Deploy: ${techData.hosting}`,
+    techData.crm          && `CRM/Marketing: ${techData.crm}`,
+    techData.tema         && `Tema: ${techData.tema}`,
+    techData.metaGenerator && `Generator: ${techData.metaGenerator}`,
+  ].filter(Boolean);
 
   checks.push({
     nombre: 'Tecnologia detectada',
     estado: 'OK',
-    detalle: tecnologiasDetectadas.length > 0
-      ? `${tecnologiasDetectadas.length} tecnologia(s) identificada(s)`
-      : 'No se pudo identificar la tecnologia — puede ser codigo custom o bien ofuscado',
-    items: tecnologiasDetectadas
+    detalle: items.length ? `${items.length} tecnologia(s) identificada(s)` : 'No se identifico la tecnologia',
+    items
   });
 
-  // Alertas especificas
-  if (techData.cms === 'WordPress') {
-    checks.push({
-      nombre: 'WordPress — consideraciones',
-      estado: 'ADVERTENCIA',
-      detalle: 'Sitio WordPress detectado — verificar que plugins, temas y core esten actualizados para evitar vulnerabilidades'
-    });
-  }
+  if (techData.cms === 'WordPress')
+    checks.push({ nombre: 'WordPress — consideraciones', estado: 'ADVERTENCIA', detalle: 'Verificar que plugins, temas y core esten actualizados' });
 
-  if (techData.cms === 'Wix' || techData.cms === 'Squarespace') {
-    checks.push({
-      nombre: `${techData.cms} — limitaciones`,
-      estado: 'ADVERTENCIA',
-      detalle: `${techData.cms} detectado — plataforma cerrada con limitaciones para SEO tecnico y personalizacion avanzada`
-    });
-  }
+  if (techData.cms === 'Wix' || techData.cms === 'Squarespace')
+    checks.push({ nombre: `${techData.cms} — limitaciones`, estado: 'ADVERTENCIA', detalle: `${techData.cms}: plataforma cerrada con limitaciones SEO y personalizacion` });
 
-  return {
-    nombre: 'Tecnologia',
-    estado: 'OK',
-    checks
-  };
+  return { nombre: 'Tecnologia', estado: 'OK', checks };
 }
 
 module.exports = { checkTecnologia };
