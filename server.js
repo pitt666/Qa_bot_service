@@ -105,6 +105,40 @@ app.post('/qa/execute', async (req, res) => {
       });
     }
 
+    // Si la pagina responde con error HTTP, no tiene caso analizar — devolver reporte minimo
+    if (httpStatus && httpStatus >= 400) {
+      await browser.close();
+      const tiempoTotal = Math.round((Date.now() - inicioAnalisis) / 1000);
+      console.log(`[${reporteId}] Pagina bloqueada (HTTP ${httpStatus}), abortando analisis`);
+      return res.json({
+        reporteId,
+        cliente: cliente || null,
+        proyecto: proyecto || null,
+        url,
+        analizadoEn: new Date().toISOString(),
+        tiempoAnalisis: `${tiempoTotal}s`,
+        secciones: {
+          saludTecnica: {
+            nombre: 'Salud Tecnica',
+            estado: 'ERROR',
+            checks: [{
+              nombre: 'Estado HTTP',
+              estado: 'ERROR',
+              detalle: `La URL respondio HTTP ${httpStatus} — verifica que la URL sea correcta y accesible publicamente`
+            }]
+          }
+        },
+        resumen: {
+          estadoFinal: 'CRITICO',
+          recomendacion: `La pagina devolvio HTTP ${httpStatus}. Corrige la URL antes de analizar.`,
+          criticos: 1,
+          advertencias: 0,
+          ok: 0,
+          totalSecciones: 1
+        }
+      });
+    }
+
     const contextoGlobal = { url, page, context, browser, erroresJS, requestsFallidos, httpStatus, mailtrap_token, mailtrap_inbox_id };
 
     console.log(`[${reporteId}] Pagina cargada (${httpStatus}), ejecutando checks...`);
