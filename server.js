@@ -36,6 +36,46 @@ app.get('/health', (req, res) => {
   res.json({ status: 'ok', service: 'qa-bot-arsen-4.0', timestamp: new Date().toISOString() });
 });
 
+// Detecta el origen del error HTTP a partir de headers y contenido de la pagina
+function detectarOrigenError(headers, contenidoPagina) {
+  const server   = (headers['server']              || '').toLowerCase();
+  const via      = (headers['via']                 || '').toLowerCase();
+  const powered  = (headers['x-powered-by']        || '').toLowerCase();
+  const cfRay    = headers['cf-ray']               || '';
+  const sgId     = headers['x-sg-id']              || headers['x-siteground-id'] || '';
+  const sucuri   = headers['x-sucuri-id']          || headers['x-sucuri-cache']  || '';
+  const contenido = (contenidoPagina || '').toLowerCase();
+
+  const causas = [];
+
+  // Origen del servidor
+  if (cfRay)                              causas.push('generado por Cloudflare');
+  else if (sgId || server.includes('siteground') || contenido.includes('siteground'))
+                                          causas.push('generado por SiteGround');
+  else if (sucuri || contenido.includes('sucuri'))
+                                          causas.push('generado por Sucuri WAF');
+  else if (server.includes('litespeed'))  causas.push('generado por LiteSpeed');
+  else if (server.includes('nginx'))      causas.push('generado por nginx');
+  else if (server.includes('apache'))     causas.push('generado por Apache');
+  else if (server)                        causas.push(`generado por ${headers['server']}`);
+
+  // Causa probable
+  if (contenido.includes('bot') || contenido.includes('automated') || contenido.includes('crawler'))
+    causas.push('bloqueado como bot/crawler');
+  else if (contenido.includes('maintenance') || contenido.includes('mantenimiento'))
+    causas.push('sitio en mantenimiento');
+  else if (contenido.includes('password') || contenido.includes('authorization required') || contenido.includes('contrasena'))
+    causas.push('directorio protegido con contrasena');
+  else if (contenido.includes('ip') && (contenido.includes('block') || contenido.includes('banned')))
+    causas.push('IP bloqueada');
+  else if (contenido.includes('geo') || contenido.includes('region') || contenido.includes('country'))
+    causas.push('restriccion geografica');
+  else
+    causas.push('posible bloqueo por reglas de seguridad o URL incorrecta');
+
+  return causas.join(' — ');
+}
+
 app.post('/qa/execute', async (req, res) => {
   const { url, cliente, proyecto, mailtrap_token, mailtrap_inbox_id } = req.body;
 
@@ -80,16 +120,19 @@ app.post('/qa/execute', async (req, res) => {
       motivo: req.failure()?.errorText
     }));
 
-    let httpStatus = null;
+    let httpStatus  = null;
+    let httpHeaders = {};
     try {
       try {
         const response = await page.goto(url, { waitUntil: 'networkidle', timeout: 90000 });
-        httpStatus = response?.status();
+        httpStatus  = response?.status();
+        httpHeaders = response?.headers() || {};
       } catch (e) {
         if (e.message.includes('Timeout')) {
           console.log(`[${reporteId}] networkidle timeout, reintentando con domcontentloaded...`);
           const response = await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
-          httpStatus = response?.status();
+          httpStatus  = response?.status();
+          httpHeaders = response?.headers() || {};
           await page.waitForTimeout(3000);
         } else {
           throw e;
@@ -105,21 +148,22 @@ app.post('/qa/execute', async (req, res) => {
       });
     }
 
-    // Si la pagina tiene status de error, verificar si es una pagina de error real
+    // Si la pagina tiene status de error, verificar si es pagina de error real
     // o si cargo contenido de todas formas (Cloudflare / WAF / redireccion JS)
     if (httpStatus && httpStatus >= 400) {
-      const paginaDeError = await page.evaluate(() => {
-        const titulo = (document.title || '').trim();
-        const texto  = (document.body?.innerText || '').trim();
-        const esErrorPorTitulo = /^(403|404|500|502|503|forbidden|not found|access denied|error)\b/i.test(titulo);
+      const infoError = await page.evaluate(() => {
+        const titulo    = (document.title || '').trim();
+        const texto     = (document.body?.innerText || '').trim();
+        const esErrorPorTitulo    = /^(403|404|500|502|503|forbidden|not found|access denied|error)\b/i.test(titulo);
         const esErrorPorContenido = texto.length < 500;
-        return esErrorPorTitulo || esErrorPorContenido;
+        return { titulo, snippet: texto.slice(0, 300), esError: esErrorPorTitulo || esErrorPorContenido };
       });
 
-      if (paginaDeError) {
+      if (infoError.esError) {
+        const origen = detectarOrigenError(httpHeaders, infoError.snippet);
         await browser.close();
         const tiempoTotal = Math.round((Date.now() - inicioAnalisis) / 1000);
-        console.log(`[${reporteId}] Pagina bloqueada (HTTP ${httpStatus}), abortando analisis`);
+        console.log(`[${reporteId}] Pagina bloqueada (HTTP ${httpStatus}): ${origen}`);
         return res.json({
           reporteId,
           cliente: cliente || null,
@@ -134,13 +178,14 @@ app.post('/qa/execute', async (req, res) => {
               checks: [{
                 nombre: 'Estado HTTP',
                 estado: 'ERROR',
-                detalle: `La URL respondio HTTP ${httpStatus} y no tiene contenido analizable — verifica que la URL sea correcta y accesible publicamente`
+                detalle: `HTTP ${httpStatus} — ${origen}`,
+                items: infoError.snippet ? [`Mensaje del servidor: "${infoError.snippet.slice(0, 200)}"`] : []
               }]
             }
           },
           resumen: {
             estadoFinal: 'CRITICO',
-            recomendacion: `La pagina devolvio HTTP ${httpStatus}. Corrige la URL antes de analizar.`,
+            recomendacion: `HTTP ${httpStatus} — ${origen}. Corrige la URL o revisa las reglas de seguridad del servidor.`,
             criticos: 1,
             advertencias: 0,
             ok: 0,
@@ -149,7 +194,7 @@ app.post('/qa/execute', async (req, res) => {
         });
       }
 
-      // Tiene contenido real a pesar del status de error (Cloudflare / WAF) — continuar con advertencia
+      // Tiene contenido real a pesar del status de error (Cloudflare / WAF) — continuar
       console.log(`[${reporteId}] HTTP ${httpStatus} pero pagina tiene contenido — continuando analisis`);
     }
 
