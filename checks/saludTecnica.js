@@ -11,13 +11,20 @@ async function checkSaludTecnica({ url, page, erroresJS }) {
     detalle: esHttps ? 'El sitio usa HTTPS correctamente' : 'El sitio NO usa HTTPS'
   });
 
-  const linksRotos = await page.evaluate(async () => {
+  // Shortlinks y dominios que no se deben verificar
+  const dominiosExcluir = ['wa.link','bit.ly','t.co','goo.gl','ow.ly','tinyurl.com','rb.gy','cutt.ly','short.io','lnkd.in','fb.me','amzn.to'];
+
+  const linksRotos = await page.evaluate(async (excluir) => {
     const anchors = Array.from(document.querySelectorAll('a[href]'));
     const dominio = window.location.hostname;
     const internos = anchors.filter(a => {
       const href = a.getAttribute('href');
       if (!href || href.startsWith('#') || href.startsWith('mailto:') || href.startsWith('tel:') || href.startsWith('javascript:')) return false;
-      try { return new URL(a.href, window.location.href).hostname === dominio; } catch { return false; }
+      try {
+        const u = new URL(a.href, window.location.href);
+        if (excluir.some(d => u.hostname.includes(d))) return false;
+        return u.hostname === dominio;
+      } catch { return false; }
     }).slice(0, 30);
     const rotos = [];
     for (const a of internos) {
@@ -27,7 +34,8 @@ async function checkSaludTecnica({ url, page, erroresJS }) {
       } catch { rotos.push({ url: a.href, status: 'Sin respuesta', texto: a.textContent.trim().slice(0, 50) }); }
     }
     return rotos;
-  });
+  }, dominiosExcluir);
+
   checks.push({
     nombre: 'Links rotos',
     estado: linksRotos.length === 0 ? 'OK' : 'ERROR',
@@ -35,14 +43,21 @@ async function checkSaludTecnica({ url, page, erroresJS }) {
     items: linksRotos.map(l => `${l.texto || '(sin texto)'} → ${l.url} [${l.status}]`)
   });
 
-  const linksMenuRotos = await page.evaluate(async () => {
+  const linksMenuRotos = await page.evaluate(async (excluir) => {
     const navSelectors = ['nav a[href]', 'header a[href]', '[role="navigation"] a[href]', '.menu a[href]', '.navbar a[href]'];
     const navLinks = []; const vistos = new Set();
+    const dominio = window.location.hostname;
     for (const sel of navSelectors) {
       document.querySelectorAll(sel).forEach(a => {
         const href = a.getAttribute('href');
         if (!href || href.startsWith('#') || href.startsWith('mailto:') || href.startsWith('tel:') || href.startsWith('javascript:')) return;
-        if (!vistos.has(a.href)) { vistos.add(a.href); navLinks.push({ href: a.href, texto: a.textContent.trim().slice(0, 50) }); }
+        try {
+          const u = new URL(a.href, window.location.href);
+          // Solo links internos o del mismo dominio, excluir shortlinks
+          if (excluir.some(d => u.hostname.includes(d))) return;
+          if (u.hostname !== dominio) return; // solo internos
+          if (!vistos.has(a.href)) { vistos.add(a.href); navLinks.push({ href: a.href, texto: a.textContent.trim().slice(0, 50) }); }
+        } catch {}
       });
     }
     const rotos = [];
@@ -53,7 +68,8 @@ async function checkSaludTecnica({ url, page, erroresJS }) {
       } catch { rotos.push({ url: link.href, status: 'Sin respuesta', texto: link.texto }); }
     }
     return rotos;
-  });
+  }, dominiosExcluir);
+
   checks.push({
     nombre: 'Links rotos en menu',
     estado: linksMenuRotos.length === 0 ? 'OK' : 'ERROR',
