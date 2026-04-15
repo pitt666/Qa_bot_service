@@ -36,68 +36,19 @@ app.get('/health', (req, res) => {
   res.json({ status: 'ok', service: 'qa-bot-arsen-4.0', timestamp: new Date().toISOString() });
 });
 
-// Detecta el origen del error HTTP a partir de headers y contenido de la pagina
-function detectarOrigenError(headers, contenidoPagina) {
-  const server   = (headers['server']              || '').toLowerCase();
-  const via      = (headers['via']                 || '').toLowerCase();
-  const powered  = (headers['x-powered-by']        || '').toLowerCase();
-  const cfRay    = headers['cf-ray']               || '';
-  const sgId     = headers['x-sg-id']              || headers['x-siteground-id'] || '';
-  const sucuri   = headers['x-sucuri-id']          || headers['x-sucuri-cache']  || '';
-  const contenido = (contenidoPagina || '').toLowerCase();
-
-  const causas = [];
-
-  // Origen del servidor
-  if (cfRay)                              causas.push('generado por Cloudflare');
-  else if (sgId || server.includes('siteground') || contenido.includes('siteground'))
-                                          causas.push('generado por SiteGround');
-  else if (sucuri || contenido.includes('sucuri'))
-                                          causas.push('generado por Sucuri WAF');
-  else if (server.includes('litespeed'))  causas.push('generado por LiteSpeed');
-  else if (server.includes('nginx'))      causas.push('generado por nginx');
-  else if (server.includes('apache'))     causas.push('generado por Apache');
-  else if (server)                        causas.push(`generado por ${headers['server']}`);
-
-  // Causa probable
-  if (contenido.includes('bot') || contenido.includes('automated') || contenido.includes('crawler'))
-    causas.push('bloqueado como bot/crawler');
-  else if (contenido.includes('maintenance') || contenido.includes('mantenimiento'))
-    causas.push('sitio en mantenimiento');
-  else if (contenido.includes('password') || contenido.includes('authorization required') || contenido.includes('contrasena'))
-    causas.push('directorio protegido con contrasena');
-  else if (contenido.includes('ip') && (contenido.includes('block') || contenido.includes('banned')))
-    causas.push('IP bloqueada');
-  else if (contenido.includes('geo') || contenido.includes('region') || contenido.includes('country'))
-    causas.push('restriccion geografica');
-  else
-    causas.push('posible bloqueo por reglas de seguridad o URL incorrecta');
-
-  return causas.join(' — ');
-}
-
 app.post('/qa/execute', async (req, res) => {
   const { url, cliente, proyecto, mailtrap_token, mailtrap_inbox_id } = req.body;
 
-  if (!url) {
-    return res.status(400).json({ error: 'Se requiere una URL' });
-  }
+  if (!url) return res.status(400).json({ error: 'Se requiere una URL' });
 
   const reporteId = uuidv4();
   const inicioAnalisis = Date.now();
-
   console.log(`[${reporteId}] Iniciando analisis de: ${url}`);
 
   let browser;
   try {
     browser = await chromium.launch({
-      args: [
-        '--no-sandbox',
-        '--disable-setuid-sandbox',
-        '--disable-dev-shm-usage',
-        '--disable-blink-features=AutomationControlled',
-        '--disable-gpu'
-      ]
+      args: ['--no-sandbox','--disable-setuid-sandbox','--disable-dev-shm-usage','--disable-blink-features=AutomationControlled','--disable-gpu']
     });
 
     const context = await browser.newContext({
@@ -111,108 +62,33 @@ app.post('/qa/execute', async (req, res) => {
     });
 
     const page = await context.newPage();
-
     const erroresJS = [];
     const requestsFallidos = [];
     page.on('pageerror', err => erroresJS.push(err.message));
-    page.on('requestfailed', req => requestsFallidos.push({
-      url: req.url(),
-      motivo: req.failure()?.errorText
-    }));
+    page.on('requestfailed', req => requestsFallidos.push({ url: req.url(), motivo: req.failure()?.errorText }));
 
-    let httpStatus  = null;
-    let httpHeaders = {};
+    let httpStatus = null;
     try {
       try {
         const response = await page.goto(url, { waitUntil: 'networkidle', timeout: 90000 });
-        httpStatus  = response?.status();
-        httpHeaders = response?.headers() || {};
+        httpStatus = response?.status();
       } catch (e) {
         if (e.message.includes('Timeout')) {
           console.log(`[${reporteId}] networkidle timeout, reintentando con domcontentloaded...`);
           const response = await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
-          httpStatus  = response?.status();
-          httpHeaders = response?.headers() || {};
+          httpStatus = response?.status();
           await page.waitForTimeout(3000);
-        } else {
-          throw e;
-        }
+        } else { throw e; }
       }
     } catch (e) {
       await browser.close();
-      return res.status(200).json({
-        reporteId,
-        url,
-        error: `No se pudo cargar la pagina: ${e.message}`,
-        status: 'ERROR'
-      });
-    }
-
-    // Si la pagina tiene status de error, verificar si es pagina de error real
-    // o si cargo contenido de todas formas (Cloudflare / WAF / redireccion JS)
-    if (httpStatus && httpStatus >= 400) {
-      const infoError = await page.evaluate(() => {
-        const titulo    = (document.title || '').trim();
-        const texto     = (document.body?.innerText || '').trim();
-        const esErrorPorTitulo    = /^(403|404|500|502|503|forbidden|not found|access denied|error)\b/i.test(titulo);
-        const esErrorPorContenido = texto.length < 500;
-        return { titulo, snippet: texto.slice(0, 300), esError: esErrorPorTitulo || esErrorPorContenido };
-      });
-
-      if (infoError.esError) {
-        const origen = detectarOrigenError(httpHeaders, infoError.snippet);
-        await browser.close();
-        const tiempoTotal = Math.round((Date.now() - inicioAnalisis) / 1000);
-        console.log(`[${reporteId}] Pagina bloqueada (HTTP ${httpStatus}): ${origen}`);
-        return res.json({
-          reporteId,
-          cliente: cliente || null,
-          proyecto: proyecto || null,
-          url,
-          analizadoEn: new Date().toISOString(),
-          tiempoAnalisis: `${tiempoTotal}s`,
-          secciones: {
-            saludTecnica: {
-              nombre: 'Salud Tecnica',
-              estado: 'ERROR',
-              checks: [{
-                nombre: 'Estado HTTP',
-                estado: 'ERROR',
-                detalle: `HTTP ${httpStatus} — ${origen}`,
-                items: infoError.snippet ? [`Mensaje del servidor: "${infoError.snippet.slice(0, 200)}"`] : []
-              }]
-            }
-          },
-          resumen: {
-            estadoFinal: 'CRITICO',
-            recomendacion: `HTTP ${httpStatus} — ${origen}. Corrige la URL o revisa las reglas de seguridad del servidor.`,
-            criticos: 1,
-            advertencias: 0,
-            ok: 0,
-            totalSecciones: 1
-          }
-        });
-      }
-
-      // Tiene contenido real a pesar del status de error (Cloudflare / WAF) — continuar
-      console.log(`[${reporteId}] HTTP ${httpStatus} pero pagina tiene contenido — continuando analisis`);
+      return res.status(200).json({ reporteId, url, error: `No se pudo cargar la pagina: ${e.message}`, status: 'ERROR' });
     }
 
     const contextoGlobal = { url, page, context, browser, erroresJS, requestsFallidos, httpStatus, mailtrap_token, mailtrap_inbox_id };
-
     console.log(`[${reporteId}] Pagina cargada (${httpStatus}), ejecutando checks...`);
 
-    const [
-      saludTecnica,
-      rendimiento,
-      mobile,
-      negocio,
-      chat,
-      contenido,
-      tracking,
-      seo,
-      tecnologia
-    ] = await Promise.all([
+    const [saludTecnica, rendimiento, mobile, negocio, chat, contenido, tracking, seo, tecnologia] = await Promise.all([
       checkSaludTecnica(contextoGlobal),
       checkRendimiento(contextoGlobal),
       checkMobile(contextoGlobal),
@@ -225,30 +101,14 @@ app.post('/qa/execute', async (req, res) => {
     ]);
 
     const formularios = await checkFormularios(contextoGlobal);
-
     await browser.close();
 
     const tiempoTotal = Math.round((Date.now() - inicioAnalisis) / 1000);
-
     const reporte = {
-      reporteId,
-      cliente: cliente || null,
-      proyecto: proyecto || null,
-      url,
+      reporteId, cliente: cliente || null, proyecto: proyecto || null, url,
       analizadoEn: new Date().toISOString(),
       tiempoAnalisis: `${tiempoTotal}s`,
-      secciones: {
-        saludTecnica,
-        rendimiento,
-        formularios,
-        mobile,
-        negocio,
-        chat,
-        contenido,
-        tracking,
-        seo,
-        tecnologia
-      },
+      secciones: { saludTecnica, rendimiento, formularios, mobile, negocio, chat, contenido, tracking, seo, tecnologia },
       resumen: generarResumen({ saludTecnica, rendimiento, formularios, mobile, negocio, chat, contenido, tracking, seo, tecnologia })
     };
 
@@ -264,9 +124,7 @@ app.post('/qa/execute', async (req, res) => {
 
 app.post('/qa/reporte-html', async (req, res) => {
   const reporte = req.body;
-  if (!reporte || !reporte.reporteId) {
-    return res.status(400).json({ error: 'Se requiere el reporte completo' });
-  }
+  if (!reporte || !reporte.reporteId) return res.status(400).json({ error: 'Se requiere el reporte completo' });
   const html = generarReporteHTML(reporte);
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
   res.setHeader('Content-Disposition', `attachment; filename="reporte-qa-${reporte.reporteId}.html"`);
@@ -275,14 +133,10 @@ app.post('/qa/reporte-html', async (req, res) => {
 
 app.post('/qa/reporte-pdf', async (req, res) => {
   const reporte = req.body;
-  if (!reporte || !reporte.reporteId) {
-    return res.status(400).json({ error: 'Se requiere el reporte completo' });
-  }
-
+  if (!reporte || !reporte.reporteId) return res.status(400).json({ error: 'Se requiere el reporte completo' });
   const html = generarReporteHTML(reporte);
   const GOTENBERG_URL = process.env.GOTENBERG_URL || 'https://pdf.pedroarandamarketing.com/forms/chromium/convert/html';
   const GOTENBERG_AUTH = process.env.GOTENBERG_AUTH || 'Basic MmNaWDMzTWZ4UHVpY1pZVzpHZVZES0xuS0xJaUk1RWxpU3BPTldVRFZWR0JDZTI2WQ==';
-
   try {
     const FormData = require('form-data');
     const form = new FormData();
@@ -293,15 +147,8 @@ app.post('/qa/reporte-pdf', async (req, res) => {
     form.append('marginLeft', '0');
     form.append('marginRight', '0');
     form.append('printBackground', 'true');
-
-    const response = await fetch(GOTENBERG_URL, {
-      method: 'POST',
-      headers: { 'Authorization': GOTENBERG_AUTH, ...form.getHeaders() },
-      body: form
-    });
-
+    const response = await fetch(GOTENBERG_URL, { method: 'POST', headers: { 'Authorization': GOTENBERG_AUTH, ...form.getHeaders() }, body: form });
     if (!response.ok) throw new Error(`Gotenberg respondio con ${response.status}`);
-
     const pdfBuffer = await response.arrayBuffer();
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename="reporte-qa-${reporte.reporteId}.pdf"`);
@@ -312,25 +159,63 @@ app.post('/qa/reporte-pdf', async (req, res) => {
   }
 });
 
+// Pesos por seccion
+const PESOS_SECCION = {
+  saludTecnica: 2.0, seo: 1.5, tracking: 1.5, formularios: 1.5,
+  rendimiento: 1.2, mobile: 1.2, negocio: 1.0, contenido: 1.0, chat: 0.8, tecnologia: 0.5
+};
+const PUNTOS_CHECK = { 'OK': 1.0, 'ADVERTENCIA': 0.5, 'ERROR': 0.0 };
+
+function calcularScore(secciones) {
+  let suma = 0, maxSuma = 0;
+  for (const [key, sec] of Object.entries(secciones)) {
+    const peso = PESOS_SECCION[key] ?? 1.0;
+    for (const c of (sec?.checks || [])) {
+      if (c.estado === 'INFORMATIVO') continue;
+      const pts = PUNTOS_CHECK[c.estado];
+      if (pts === undefined) continue;
+      suma    += pts * peso;
+      maxSuma += 1.0 * peso;
+    }
+  }
+  if (maxSuma === 0) return { score: null, letra: 'N/A' };
+  const score = Math.round((suma / maxSuma) * 100);
+  const letra = score >= 90 ? 'A' : score >= 75 ? 'B' : score >= 60 ? 'C' : score >= 40 ? 'D' : 'F';
+  return { score, letra };
+}
+
+function contarChecks(secciones) {
+  let ok = 0, adv = 0, err = 0, info = 0;
+  for (const sec of Object.values(secciones)) {
+    for (const c of (sec?.checks || [])) {
+      if      (c.estado === 'OK')          ok++;
+      else if (c.estado === 'ADVERTENCIA') adv++;
+      else if (c.estado === 'ERROR')       err++;
+      else if (c.estado === 'INFORMATIVO') info++;
+    }
+  }
+  return { ok, adv, err, info };
+}
+
 function generarResumen(secciones) {
   const todas = Object.values(secciones);
-  const criticos = todas.filter(s => s.estado === 'ERROR').length;
-  const advertencias = todas.filter(s => s.estado === 'ADVERTENCIA').length;
-  const ok = todas.filter(s => s.estado === 'OK').length;
-
+  const seccionesCriticas    = todas.filter(s => s.estado === 'ERROR').length;
+  const seccionesAdvertencia = todas.filter(s => s.estado === 'ADVERTENCIA').length;
+  const seccionesOk          = todas.filter(s => s.estado === 'OK').length;
+  const cnt = contarChecks(secciones);
+  const { score, letra } = calcularScore(secciones);
   let estadoFinal, recomendacion;
-  if (criticos > 0) {
+  if (seccionesCriticas > 0) {
     estadoFinal = 'CRITICO';
-    recomendacion = `${criticos} problema(s) critico(s) que requieren atencion inmediata`;
-  } else if (advertencias > 0) {
+    recomendacion = `${cnt.err} problema(s) critico(s) que requieren atencion inmediata`;
+  } else if (seccionesAdvertencia > 0) {
     estadoFinal = 'ADVERTENCIAS';
-    recomendacion = `${advertencias} punto(s) a revisar con tu equipo`;
+    recomendacion = `${cnt.adv} punto(s) a revisar con tu equipo`;
   } else {
     estadoFinal = 'OK';
     recomendacion = 'Todo se ve bien';
   }
-
-  return { estadoFinal, recomendacion, criticos, advertencias, ok, totalSecciones: todas.length };
+  return { estadoFinal, recomendacion, score, letra, criticos: cnt.err, advertencias: cnt.adv, ok: cnt.ok, informativos: cnt.info, totalSecciones: todas.length, seccionesCriticas, seccionesAdvertencia, seccionesOk };
 }
 
 app.listen(PORT, () => {
