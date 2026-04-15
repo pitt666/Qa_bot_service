@@ -37,22 +37,26 @@ async function checkSaludTecnica({ url, page, erroresJS, httpStatus }) {
         if (excluir.some(d => u.hostname.includes(d))) return false;
         return u.hostname === dominio;
       } catch { return false; }
-    }).slice(0, 30);
-    const rotos = [];
-    for (const a of internos) {
-      try {
-        const resp = await fetch(a.href, { method: 'HEAD', cache: 'no-cache' });
-        if (resp.status >= 400) rotos.push({ url: a.href, status: resp.status, texto: a.textContent.trim().slice(0, 50) });
-      } catch { rotos.push({ url: a.href, status: 'Sin respuesta', texto: a.textContent.trim().slice(0, 50) }); }
-    }
-    return rotos;
+    }).slice(0, 20);
+    const resultados = await Promise.all(
+      internos.map(a => {
+        const ctrl = new AbortController();
+        setTimeout(() => ctrl.abort(), 5000);
+        return fetch(a.href, { method: 'HEAD', cache: 'no-cache', signal: ctrl.signal })
+          .then(r => ({ href: a.href, status: r.status, texto: a.textContent.trim().slice(0, 50) }))
+          .catch(() => ({ href: a.href, status: 'Sin respuesta', texto: a.textContent.trim().slice(0, 50) }));
+      })
+    );
+    return resultados
+      .filter(({ status }) => status === 'Sin respuesta' || (typeof status === 'number' && status >= 400))
+      .map(({ href, status, texto }) => ({ url: href, status, texto }));
   }, dominiosExcluir);
 
   checks.push({
     nombre: 'Links rotos',
     estado: linksRotos.length === 0 ? 'OK' : 'ERROR',
     detalle: linksRotos.length === 0 ? 'No se encontraron links rotos' : `${linksRotos.length} link(s) roto(s)`,
-    items: linksRotos.map(l => `${l.texto || '(sin texto)'} → ${l.url} [${l.status}]`)
+    items: linksRotos.map(l => `${l.texto || '(sin texto)'} \u2192 ${l.url} [${l.status}]`)
   });
 
   const linksMenuRotos = await page.evaluate(async (excluir) => {
@@ -71,21 +75,25 @@ async function checkSaludTecnica({ url, page, erroresJS, httpStatus }) {
         } catch {}
       });
     }
-    const rotos = [];
-    for (const link of navLinks) {
-      try {
-        const resp = await fetch(link.href, { method: 'HEAD', cache: 'no-cache' });
-        if (resp.status >= 400) rotos.push({ url: link.href, status: resp.status, texto: link.texto });
-      } catch { rotos.push({ url: link.href, status: 'Sin respuesta', texto: link.texto }); }
-    }
-    return rotos;
+    const resultados = await Promise.all(
+      navLinks.map(link => {
+        const ctrl = new AbortController();
+        setTimeout(() => ctrl.abort(), 5000);
+        return fetch(link.href, { method: 'HEAD', cache: 'no-cache', signal: ctrl.signal })
+          .then(r => ({ link, status: r.status }))
+          .catch(() => ({ link, status: 'Sin respuesta' }));
+      })
+    );
+    return resultados
+      .filter(({ status }) => status === 'Sin respuesta' || (typeof status === 'number' && status >= 400))
+      .map(({ link, status }) => ({ url: link.href, status, texto: link.texto }));
   }, dominiosExcluir);
 
   checks.push({
     nombre: 'Links rotos en menu',
     estado: linksMenuRotos.length === 0 ? 'OK' : 'ERROR',
     detalle: linksMenuRotos.length === 0 ? 'Todos los links del menu funcionan' : `${linksMenuRotos.length} link(s) roto(s) en el menu`,
-    items: linksMenuRotos.map(l => `"${l.texto}" → ${l.url} [${l.status}]`)
+    items: linksMenuRotos.map(l => `"${l.texto}" \u2192 ${l.url} [${l.status}]`)
   });
 
   // Imagenes rotas — distinguir internas (ERROR) de externas (ADVERTENCIA, puede ser anti-hotlinking)
@@ -112,8 +120,8 @@ async function checkSaludTecnica({ url, page, erroresJS, httpStatus }) {
     estado: hayRotasReales ? 'ERROR' : hayExternas ? 'ADVERTENCIA' : 'OK',
     detalle: imagenesRotas.length === 0
       ? 'No se encontraron imagenes rotas'
-      : `${rotasInternas.length > 0 ? rotasInternas.length + ' interna(s) rota(s)' : ''}${rotasInternas.length > 0 && hayExternas ? ' + ' : ''}${hayExternas ? rotasExternas.length + ' externa(s) — puede ser anti-hotlinking' : ''}`,
-    items: imagenesRotas.map(i => `${i.alt}${i.esExterna ? ' [externo]' : ''} → ${i.src}`)
+      : `${rotasInternas.length > 0 ? rotasInternas.length + ' interna(s) rota(s)' : ''}${rotasInternas.length > 0 && hayExternas ? ' + ' : ''}${hayExternas ? rotasExternas.length + ' externa(s) \u2014 puede ser anti-hotlinking' : ''}`,
+    items: imagenesRotas.map(i => `${i.alt}${i.esExterna ? ' [externo]' : ''} \u2192 ${i.src}`)
   });
 
   const botonesVacios = await page.evaluate(() => {
