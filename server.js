@@ -89,18 +89,18 @@ app.post('/qa/execute', async (req, res) => {
     console.log(`[${reporteId}] Pagina cargada (${httpStatus}), ejecutando checks...`);
 
     const [saludTecnica, rendimiento, mobile, negocio, chat, contenido, tracking, seo, tecnologia] = await Promise.all([
-      checkSaludTecnica(contextoGlobal),
-      checkRendimiento(contextoGlobal),
-      checkMobile(contextoGlobal),
-      checkNegocio(contextoGlobal),
-      checkChat(contextoGlobal),
-      checkContenido(contextoGlobal),
-      checkTracking(contextoGlobal),
-      checkSEO(contextoGlobal),
-      checkTecnologia(contextoGlobal)
+      safeCheck(() => checkSaludTecnica(contextoGlobal), 'Salud Tecnica'),
+      safeCheck(() => checkRendimiento(contextoGlobal), 'Rendimiento'),
+      safeCheck(() => checkMobile(contextoGlobal), 'Mobile'),
+      safeCheck(() => checkNegocio(contextoGlobal), 'Negocio y Confianza'),
+      safeCheck(() => checkChat(contextoGlobal), 'Chat y Atencion'),
+      safeCheck(() => checkContenido(contextoGlobal), 'Contenido'),
+      safeCheck(() => checkTracking(contextoGlobal), 'Tracking'),
+      safeCheck(() => checkSEO(contextoGlobal), 'SEO'),
+      safeCheck(() => checkTecnologia(contextoGlobal), 'Tecnologia')
     ]);
 
-    const formularios = await checkFormularios(contextoGlobal);
+    const formularios = await safeCheck(() => checkFormularios(contextoGlobal), 'Formularios y Conversion');
     await browser.close();
 
     const tiempoTotal = Math.round((Date.now() - inicioAnalisis) / 1000);
@@ -216,6 +216,19 @@ function generarResumen(secciones) {
     recomendacion = 'Todo se ve bien';
   }
   return { estadoFinal, recomendacion, score, letra, criticos: cnt.err, advertencias: cnt.adv, ok: cnt.ok, informativos: cnt.info, totalSecciones: todas.length, seccionesCriticas, seccionesAdvertencia, seccionesOk };
+}
+
+async function safeCheck(fn, defaultName) {
+  try {
+    return await fn();
+  } catch (e) {
+    console.error(`[safeCheck] Error en "${defaultName}":`, (e.message || '').slice(0, 200));
+    return {
+      nombre: defaultName,
+      estado: 'ADVERTENCIA',
+      checks: [{ nombre: 'Analisis incompleto', estado: 'ADVERTENCIA', detalle: `No se pudo completar el analisis de esta seccion: ${(e.message || 'Error desconocido').slice(0, 150)}` }]
+    };
+  }
 }
 
 app.listen(PORT, () => {
