@@ -21,7 +21,7 @@ async function checkFormularios({ page, context, mailtrap_token, mailtrap_inbox_
   });
 
   if (formularios.length === 0) {
-    checks.push({ nombre: 'Formularios', estado: 'OK', detalle: 'No se encontraron formularios en esta pagina' });
+    checks.push({ nombre: 'Formularios', estado: 'INFORMATIVO', detalle: 'No se encontraron formularios en esta pagina — no aplica' });
   } else {
     checks.push({
       nombre: 'Formularios detectados', estado: 'OK',
@@ -37,7 +37,7 @@ async function checkFormularios({ page, context, mailtrap_token, mailtrap_inbox_
   }
 
   const tienePaginaGracias = await page.evaluate(() => {
-    const palabras = ['gracias','thank','thanks','confirmacion','confirmation','exito','success','order-received'];
+    const palabras = ['gracias','thank','thanks','confirmacion','confirmation','exito','success'];
     return Array.from(document.querySelectorAll('a[href]')).some(a =>
       palabras.some(p => (a.href||'').toLowerCase().includes(p) || (a.textContent||'').toLowerCase().includes(p))
     );
@@ -48,27 +48,54 @@ async function checkFormularios({ page, context, mailtrap_token, mailtrap_inbox_
     detalle: tienePaginaGracias ? 'Pagina de gracias detectada' : 'No se detecto pagina de gracias — el Pixel y GA4 no pueden trackear conversiones'
   });
 
-  // Anti-spam: reCAPTCHA, hCaptcha, CleanTalk, Turnstile, Akismet
-  const antiSpam = await page.evaluate(() => {
-    if (document.querySelector('.g-recaptcha, [data-sitekey], iframe[src*="recaptcha"], iframe[src*="hcaptcha"]') ||
-        window.grecaptcha || document.querySelector('script[src*="recaptcha"], script[src*="hcaptcha"]'))
-      return { tiene: true, cual: 'reCAPTCHA / hCaptcha' };
-    if (document.querySelector('script[src*="cleantalk.org"], script[src*="moderate.cleantalk"], script[src*="apbct"]') ||
-        document.querySelector('[name*="ct_checkjs"], [name*="apbct_visible_fields_count"]') || window.ctcc)
-      return { tiene: true, cual: 'CleanTalk' };
-    if (document.querySelector('.cf-turnstile, script[src*="challenges.cloudflare.com"]'))
-      return { tiene: true, cual: 'Cloudflare Turnstile' };
-    if (document.querySelector('script[src*="akismet"]'))
-      return { tiene: true, cual: 'Akismet' };
-    return { tiene: false, cual: null };
+  const antispamInfo = await page.evaluate(() => {
+    const html = document.documentElement.outerHTML.toLowerCase();
+    const detectados = [];
+
+    // reCAPTCHA (Google v2/v3)
+    if (document.querySelector('.g-recaptcha, iframe[src*="recaptcha"], script[src*="recaptcha"]') ||
+        window.grecaptcha) {
+      detectados.push('reCAPTCHA');
+    }
+
+    // hCaptcha
+    if (document.querySelector('.h-captcha, iframe[src*="hcaptcha"], script[src*="hcaptcha"]')) {
+      detectados.push('hCaptcha');
+    }
+
+    // Cloudflare Turnstile
+    if (document.querySelector('.cf-turnstile, script[src*="challenges.cloudflare.com"]') ||
+        window.turnstile) {
+      detectados.push('Cloudflare Turnstile');
+    }
+
+    // CleanTalk (WordPress, invisible)
+    if (document.querySelector('script[src*="cleantalk"], script[src*="apbct"]') ||
+        document.querySelector('input[name*="ct_checkjs"], input[name*="apbct"]') ||
+        html.includes('apbct_event_id') || html.includes('ctpublicfunctions') ||
+        window.ctNocache || window.ctPublic || window.ctPublicFunctions) {
+      detectados.push('CleanTalk');
+    }
+
+    // Honeypot generico
+    const honeypotSelectors = [
+      'input[name*="honeypot"]','input[name*="hp_"]','input[name="email_confirm"]',
+      'input[name="url"][tabindex="-1"]','input[class*="honeypot"]','input[name="_gotcha"]'
+    ];
+    if (honeypotSelectors.some(sel => document.querySelector(sel))) {
+      detectados.push('Honeypot');
+    }
+
+    return { detectados };
   });
-  checks.push({
-    nombre: 'Proteccion anti-spam',
-    estado: formularios.length > 0 && !antiSpam.tiene ? 'ADVERTENCIA' : 'OK',
-    detalle: antiSpam.tiene
-      ? `Anti-spam detectado: ${antiSpam.cual}`
-      : formularios.length > 0 ? 'Sin proteccion anti-spam — formularios expuestos a spam' : 'No aplica'
-  });
+
+  if (formularios.length === 0) {
+    checks.push({ nombre: 'Proteccion anti-spam', estado: 'INFORMATIVO', detalle: 'No aplica — no hay formularios en la pagina' });
+  } else if (antispamInfo.detectados.length > 0) {
+    checks.push({ nombre: 'Proteccion anti-spam', estado: 'OK', detalle: `Detectado: ${antispamInfo.detectados.join(', ')}` });
+  } else {
+    checks.push({ nombre: 'Proteccion anti-spam', estado: 'ADVERTENCIA', detalle: 'Sin proteccion anti-spam detectada — los formularios pueden recibir spam (deteccion basada en front-end; plugins 100% backend como Akismet pueden no aparecer)' });
+  }
 
   return { nombre: 'Formularios y Conversion', estado: calcularEstado(checks), checks };
 }
@@ -103,7 +130,7 @@ async function intentarEnvioFormulario(page, formulario, mailtrap_token, mailtra
     ]);
     const paginaDespues = page.url();
     const redirigioAGracias = paginaDespues !== paginaAntes &&
-      ['gracias','thank','thanks','confirmacion','success','exito','order-received'].some(p => paginaDespues.toLowerCase().includes(p));
+      ['gracias','thank','thanks','confirmacion','success','exito'].some(p => paginaDespues.toLowerCase().includes(p));
     let emailLlego = false, detalleMailtrap = '';
     try {
       const r = await fetch(`https://mailtrap.io/api/accounts/1/inboxes/${mailtrap_inbox_id}/messages`, { headers: { 'Api-Token': mailtrap_token } });
@@ -116,7 +143,7 @@ async function intentarEnvioFormulario(page, formulario, mailtrap_token, mailtra
     return {
       nombre: 'Prueba de envio real',
       estado: redirigioAGracias || emailLlego ? 'OK' : 'ADVERTENCIA',
-      detalle: `Formulario enviado.${redirigioAGracias ? ` Redirige a: ${paginaDespues}` : ' Sin redireccion.'}${detalleMailtrap}`
+      detalle: `Formulario enviado.${redirigioAGracias ? ` Redirige a: ${paginaDespues}` : ' Sin redireccion a pagina de gracias.'}${detalleMailtrap}`
     };
   } catch (e) {
     return { nombre: 'Prueba de envio real', estado: 'ADVERTENCIA', detalle: `No se pudo completar: ${e.message}` };
