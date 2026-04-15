@@ -4,12 +4,20 @@
 
 function generarReporteHTML(reporte) {
   const { reporteId, cliente, proyecto, url, analizadoEn, tiempoAnalisis, secciones, resumen } = reporte;
-
   const fecha = new Date(analizadoEn).toLocaleString('es-MX', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 
-  const eColor = { 'OK': '#22c55e', 'ADVERTENCIA': '#f59e0b', 'ERROR': '#ef4444' };
-  const eEmoji = { 'OK': '✅', 'ADVERTENCIA': '⚠️', 'ERROR': '❌' };
-  const eBg    = { 'OK': '#f0fdf4', 'ADVERTENCIA': '#fffbeb', 'ERROR': '#fef2f2' };
+  const eColor = { 'OK': '#22c55e', 'ADVERTENCIA': '#f59e0b', 'ERROR': '#ef4444', 'INFORMATIVO': '#3b82f6' };
+  const eEmoji = { 'OK': '\u2705', 'ADVERTENCIA': '\u26a0\ufe0f', 'ERROR': '\u274c', 'INFORMATIVO': '\u2139\ufe0f' };
+  const eBg    = { 'OK': '#f0fdf4', 'ADVERTENCIA': '#fffbeb', 'ERROR': '#fef2f2', 'INFORMATIVO': '#eff6ff' };
+
+  const score = resumen?.score;
+  const scoreColor =
+    score == null ? '#6b7280' :
+    score >= 90   ? '#22c55e' :
+    score >= 75   ? '#84cc16' :
+    score >= 60   ? '#f59e0b' :
+    score >= 40   ? '#f97316' :
+                    '#ef4444';
 
   function badge(estado) {
     const c = eColor[estado] || '#6b7280', bg = eBg[estado] || '#f9fafb';
@@ -79,6 +87,15 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;m
   </div>
   <div class="resumen">
     <h2>Resultado General</h2>
+    ${score != null ? `
+    <div style="display:flex;align-items:center;gap:24px;flex-wrap:wrap;margin:8px 0 12px">
+      <div style="display:flex;align-items:baseline;gap:6px">
+        <div style="font-size:64px;font-weight:800;line-height:1;color:${scoreColor}">${score}</div>
+        <div style="font-size:20px;color:#6b7280;font-weight:600">/ 100</div>
+      </div>
+      <div style="background:${scoreColor};color:white;font-size:32px;font-weight:800;width:60px;height:60px;border-radius:8px;display:flex;align-items:center;justify-content:center">${resumen?.letra || '-'}</div>
+      <div style="font-size:14px;color:#6b7280">Calificacion ponderada<br><span style="font-size:12px">considera todos los checks por su importancia</span></div>
+    </div>` : ''}
     <div class="estado-label">${eEmoji[resumen?.estadoFinal] || ''} ${resumen?.estadoFinal || 'N/A'}</div>
     <div class="rec">${esc(resumen?.recomendacion || '')}</div>
     <div class="stats">
