@@ -77,9 +77,17 @@ app.post('/qa/execute', async (req, res) => {
           console.log(`[${reporteId}] networkidle timeout, reintentando con domcontentloaded...`);
           const response = await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
           httpStatus = response?.status();
-          await page.waitForTimeout(3000);
         } else { throw e; }
       }
+
+      // Smart wait: esperar GTM y Tochat/Chatwit (o confirmar que no estan), max 5s
+      await page.waitForFunction(() => {
+        const gtmListo = !window.dataLayer || window.dataLayer.some(e => e.event && e.event !== 'gtm.js');
+        const sinScriptTochat = !document.querySelector('script[src*="tochat"],script[src*="chatwit"]');
+        const tochatCargado = !!document.querySelector('[class*="tochat"],[id*="tochat"],[class*="chatwit"],[id*="chatwit"]');
+        return gtmListo && (sinScriptTochat || tochatCargado);
+      }, { timeout: 5000 }).catch(() => {});
+
     } catch (e) {
       await browser.close();
       return res.status(200).json({ reporteId, url, error: `No se pudo cargar la pagina: ${e.message}`, status: 'ERROR' });
@@ -159,7 +167,6 @@ app.post('/qa/reporte-pdf', async (req, res) => {
   }
 });
 
-// Pesos por seccion
 const PESOS_SECCION = {
   saludTecnica: 2.0, seo: 1.5, tracking: 1.5, formularios: 1.5,
   rendimiento: 1.2, mobile: 1.2, negocio: 1.0, contenido: 1.0, chat: 0.8, tecnologia: 0.5
