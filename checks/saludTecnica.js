@@ -6,12 +6,22 @@ async function checkSaludTecnica({ url, page, erroresJS, httpStatus }) {
 
   if (httpStatus !== null && httpStatus !== undefined) {
     const esError = httpStatus >= 400;
+    let detalleHttp;
+    if (httpStatus === 403) {
+      detalleHttp = 'HTTP 403 — el sitio esta bloqueando herramientas de analisis. Para un diagnostico completo, pide al cliente desactivar temporalmente el bot protection (SiteGround, WordFence, Cloudflare, etc.)';
+    } else if (httpStatus === 404) {
+      detalleHttp = 'HTTP 404 — pagina no encontrada. Verifica que la URL sea correcta';
+    } else if (httpStatus >= 500) {
+      detalleHttp = `HTTP ${httpStatus} — error interno del servidor. El sitio puede estar caido o mal configurado`;
+    } else if (esError) {
+      detalleHttp = `HTTP ${httpStatus} — error al cargar la pagina. Verifica la URL`;
+    } else {
+      detalleHttp = `HTTP ${httpStatus} — pagina accesible`;
+    }
     checks.push({
       nombre: 'Estado HTTP',
       estado: esError ? 'ERROR' : 'OK',
-      detalle: esError
-        ? `Pagina respondio HTTP ${httpStatus} — resultados del analisis pueden ser incorrectos (analiza la URL correcta)`
-        : `HTTP ${httpStatus} — pagina accesible`
+      detalle: detalleHttp
     });
   }
 
@@ -41,14 +51,12 @@ async function checkSaludTecnica({ url, page, erroresJS, httpStatus }) {
       internos.map(async a => {
         const href = a.href;
         const texto = a.textContent.trim().slice(0, 50);
-        // Intentar HEAD primero
         const c1 = new AbortController();
         setTimeout(() => c1.abort(), 5000);
         try {
           const r = await fetch(href, { method: 'HEAD', cache: 'no-cache', signal: c1.signal });
           return { href, status: r.status, texto };
         } catch {}
-        // Fallback GET (muchos servidores bloquean HEAD)
         const c2 = new AbortController();
         setTimeout(() => c2.abort(), 5000);
         try {
