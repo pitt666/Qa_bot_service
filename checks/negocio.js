@@ -2,9 +2,54 @@
  * SECCION 5 — NEGOCIO Y CONFIANZA
  */
 const tls = require('tls');
+const https = require('https');
+const http = require('http');
+
+function fetchTexto(url, timeoutMs = 5000) {
+  return new Promise(resolve => {
+    try {
+      const lib = url.startsWith('https') ? https : http;
+      const req = lib.get(url, { timeout: timeoutMs, headers: { 'User-Agent': 'QA-Bot/1.0' } }, res => {
+        if (res.statusCode >= 400) return resolve(null);
+        let data = '';
+        res.on('data', chunk => { data += chunk; if (data.length > 500000) { req.destroy(); resolve(data); } });
+        res.on('end', () => resolve(data));
+      });
+      req.on('error', () => resolve(null));
+      req.on('timeout', () => { req.destroy(); resolve(null); });
+    } catch { resolve(null); }
+  });
+}
+
+const norm = t => (t || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+
+async function buscarEnSitemap(baseUrl, keywords) {
+  const paths = ['/sitemap.xml', '/sitemap_index.xml', '/wp-sitemap.xml', '/sitemap-index.xml'];
+  let locs = [];
+  for (const path of paths) {
+    const content = await fetchTexto(baseUrl + path);
+    if (!content) continue;
+    const matches = [...content.matchAll(/<loc>\s*([^<]+?)\s*<\/loc>/gi)].map(m => m[1].trim());
+    locs.push(...matches);
+    if (locs.length > 0) break;
+  }
+  const subSitemaps = locs.filter(u => norm(u).includes('sitemap') && u.endsWith('.xml'));
+  if (subSitemaps.length > 0) {
+    const contents = await Promise.all(subSitemaps.slice(0, 5).map(u => fetchTexto(u)));
+    for (const c of contents) {
+      if (!c) continue;
+      const matches = [...c.matchAll(/<loc>\s*([^<]+?)\s*<\/loc>/gi)].map(m => m[1].trim());
+      locs.push(...matches.filter(u => !u.endsWith('.xml')));
+    }
+  }
+  return locs.filter(loc => keywords.some(k => norm(loc).includes(k)));
+}
 
 async function checkNegocio({ url, page }) {
   const checks = [];
+
+  let baseUrl = '';
+  try { const u = new URL(url); baseUrl = `${u.protocol}//${u.host}`; } catch {}
 
   const whatsappInfo = await page.evaluate(() => {
     const links = Array.from(document.querySelectorAll('a[href*="wa.me"], a[href*="api.whatsapp.com"], a[href*="whatsapp.com/send"]'));
@@ -79,24 +124,76 @@ async function checkNegocio({ url, page }) {
   });
   checks.push({ nombre: 'Aviso de cookies / GDPR', estado: tieneCookies ? 'OK' : 'ADVERTENCIA', detalle: tieneCookies ? 'Aviso de cookies detectado' : 'No se detecto aviso de cookies' });
 
+  // Detectar docs legales: links + texto plano en pagina
   const docsLegales = await page.evaluate(() => {
+    const normLocal = t => (t || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
     const links = Array.from(document.querySelectorAll('a[href]'));
-    const buscar = (palabras) => {
+    const buscarLink = (palabras) => {
       const hit = links.find(a => {
-        const t = (a.textContent + ' ' + (a.href || '')).toLowerCase();
-        return palabras.some(p => t.includes(p));
+        const t = normLocal(a.textContent + ' ' + (a.href || ''));
+        return palabras.some(p => t.includes(normLocal(p)));
       });
       return hit ? hit.textContent.trim().slice(0, 60) : null;
     };
+    const buscarTexto = (palabras) => {
+      const txt = normLocal(document.body.innerText);
+      return palabras.some(p => txt.includes(normLocal(p)));
+    };
     return {
-      privacidad: buscar(['privacidad', 'privacy', 'aviso legal', 'aviso de privacidad']),
-      terminos:   buscar(['terminos', 't\u00e9rminos', 'condiciones', 'terms']),
-      cookies:    buscar(['politica de cookies', 'pol\u00edtica de cookies', 'cookie policy', 'aviso de cookies'])
+      privacidad: {
+        link: buscarLink(['privacidad', 'privacy', 'aviso legal', 'aviso de privacidad', 'politica de privacidad', 'pol\u00edtica de privacidad']),
+        enTexto: buscarTexto(['aviso de privacidad', 'politica de privacidad', 'pol\u00edtica de privacidad', 'privacidad'])
+      },
+      terminos: {
+        link: buscarLink(['terminos', 't\u00e9rminos', 'condiciones', 'terms', 'terminos y condiciones']),
+        enTexto: buscarTexto(['terminos y condiciones', 'terminos de uso', 'condiciones de uso'])
+      },
+      cookies: {
+        link: buscarLink(['politica de cookies', 'pol\u00edtica de cookies', 'cookie policy', 'aviso de cookies']),
+        enTexto: buscarTexto(['politica de cookies', 'pol\u00edtica de cookies', 'cookie policy'])
+      }
     };
   });
-  checks.push({ nombre: 'Politica de privacidad', estado: docsLegales.privacidad ? 'OK' : 'ERROR', detalle: docsLegales.privacidad ? `Enlace encontrado: "${docsLegales.privacidad}"` : 'Sin politica de privacidad — obligatorio si tienes formularios o tracking' });
-  checks.push({ nombre: 'Terminos y condiciones', estado: docsLegales.terminos ? 'OK' : 'ADVERTENCIA', detalle: docsLegales.terminos ? `Enlace encontrado: "${docsLegales.terminos}"` : 'Sin terminos y condiciones — recomendado' });
-  checks.push({ nombre: 'Politica de cookies', estado: docsLegales.cookies ? 'OK' : 'ADVERTENCIA', detalle: docsLegales.cookies ? `Enlace encontrado: "${docsLegales.cookies}"` : 'Sin politica de cookies — recomendado si usas tracking o banner de cookies' });
+
+  // Fallback sitemap (server-side)
+  const [privSitemap, termSitemap, cookSitemap] = await Promise.all([
+    buscarEnSitemap(baseUrl, ['privacidad', 'privacy', 'aviso-legal', 'aviso-privacidad']),
+    buscarEnSitemap(baseUrl, ['terminos', 'condiciones', 'terms']),
+    buscarEnSitemap(baseUrl, ['cookies', 'cookie-policy'])
+  ]);
+
+  // Politica de privacidad — 3 niveles
+  if (docsLegales.privacidad.link) {
+    checks.push({ nombre: 'Politica de privacidad', estado: 'OK', detalle: `Enlace encontrado: "${docsLegales.privacidad.link}"` });
+  } else if (privSitemap.length > 0) {
+    checks.push({ nombre: 'Politica de privacidad', estado: 'ADVERTENCIA', detalle: `Pagina existe en sitemap (${privSitemap[0]}) pero sin link visible — agregar enlace en el footer` });
+  } else if (docsLegales.privacidad.enTexto) {
+    checks.push({ nombre: 'Politica de privacidad', estado: 'ADVERTENCIA', detalle: 'Texto visible pero sin link clickeable — el usuario no puede acceder, agregar <a href> en el footer' });
+  } else {
+    checks.push({ nombre: 'Politica de privacidad', estado: 'ERROR', detalle: 'Sin politica de privacidad — obligatorio si tienes formularios o tracking' });
+  }
+
+  // Terminos y condiciones — 3 niveles
+  if (docsLegales.terminos.link) {
+    checks.push({ nombre: 'Terminos y condiciones', estado: 'OK', detalle: `Enlace encontrado: "${docsLegales.terminos.link}"` });
+  } else if (termSitemap.length > 0) {
+    checks.push({ nombre: 'Terminos y condiciones', estado: 'ADVERTENCIA', detalle: `Pagina existe en sitemap (${termSitemap[0]}) pero sin link — agregar en el footer` });
+  } else if (docsLegales.terminos.enTexto) {
+    checks.push({ nombre: 'Terminos y condiciones', estado: 'ADVERTENCIA', detalle: 'Mencionado en texto pero sin link clickeable — agregar <a href>' });
+  } else {
+    checks.push({ nombre: 'Terminos y condiciones', estado: 'ADVERTENCIA', detalle: 'Sin terminos y condiciones — recomendado' });
+  }
+
+  // Politica de cookies — 3 niveles
+  if (docsLegales.cookies.link) {
+    checks.push({ nombre: 'Politica de cookies', estado: 'OK', detalle: `Enlace encontrado: "${docsLegales.cookies.link}"` });
+  } else if (cookSitemap.length > 0) {
+    checks.push({ nombre: 'Politica de cookies', estado: 'ADVERTENCIA', detalle: `Pagina existe en sitemap (${cookSitemap[0]}) pero sin link — agregar en el footer` });
+  } else if (docsLegales.cookies.enTexto) {
+    checks.push({ nombre: 'Politica de cookies', estado: 'ADVERTENCIA', detalle: 'Mencionado en texto pero sin link clickeable — agregar <a href>' });
+  } else {
+    checks.push({ nombre: 'Politica de cookies', estado: 'ADVERTENCIA', detalle: 'Sin politica de cookies — recomendado si usas tracking o banner de cookies' });
+  }
 
   const redes = await page.evaluate(() => {
     const dominios = { facebook:'facebook.com', instagram:'instagram.com', youtube:'youtube.com', twitter:'twitter.com', tiktok:'tiktok.com', linkedin:'linkedin.com' };
