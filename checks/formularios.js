@@ -1,8 +1,54 @@
 /**
  * SECCION 3 — FORMULARIOS Y CONVERSION
  */
-async function checkFormularios({ page, context, mailtrap_token, mailtrap_inbox_id }) {
+const https = require('https');
+const http = require('http');
+
+function fetchTexto(url, timeoutMs = 5000) {
+  return new Promise(resolve => {
+    try {
+      const lib = url.startsWith('https') ? https : http;
+      const req = lib.get(url, { timeout: timeoutMs, headers: { 'User-Agent': 'QA-Bot/1.0' } }, res => {
+        if (res.statusCode >= 400) return resolve(null);
+        let data = '';
+        res.on('data', chunk => { data += chunk; if (data.length > 500000) { req.destroy(); resolve(data); } });
+        res.on('end', () => resolve(data));
+      });
+      req.on('error', () => resolve(null));
+      req.on('timeout', () => { req.destroy(); resolve(null); });
+    } catch { resolve(null); }
+  });
+}
+
+const norm = t => (t || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+
+async function buscarEnSitemap(baseUrl, keywords) {
+  const paths = ['/sitemap.xml', '/sitemap_index.xml', '/wp-sitemap.xml', '/sitemap-index.xml'];
+  let locs = [];
+  for (const path of paths) {
+    const content = await fetchTexto(baseUrl + path);
+    if (!content) continue;
+    const matches = [...content.matchAll(/<loc>\s*([^<]+?)\s*<\/loc>/gi)].map(m => m[1].trim());
+    locs.push(...matches);
+    if (locs.length > 0) break;
+  }
+  const subSitemaps = locs.filter(u => norm(u).includes('sitemap') && u.endsWith('.xml'));
+  if (subSitemaps.length > 0) {
+    const contents = await Promise.all(subSitemaps.slice(0, 5).map(u => fetchTexto(u)));
+    for (const c of contents) {
+      if (!c) continue;
+      const matches = [...c.matchAll(/<loc>\s*([^<]+?)\s*<\/loc>/gi)].map(m => m[1].trim());
+      locs.push(...matches.filter(u => !u.endsWith('.xml')));
+    }
+  }
+  return locs.filter(loc => keywords.some(k => norm(loc).includes(k)));
+}
+
+async function checkFormularios({ page, context, url, mailtrap_token, mailtrap_inbox_id }) {
   const checks = [];
+
+  let baseUrl = '';
+  try { const u = new URL(url); baseUrl = `${u.protocol}//${u.host}`; } catch {}
 
   const formularios = await page.evaluate(() => {
     return Array.from(document.querySelectorAll('form')).map((form, i) => {
@@ -36,56 +82,46 @@ async function checkFormularios({ page, context, mailtrap_token, mailtrap_inbox_
     }
   }
 
-  const tienePaginaGracias = await page.evaluate(() => {
-    const palabras = ['gracias','thank','thanks','confirmacion','confirmation','exito','success'];
+  // Pagina de gracias: links en la pagina + sitemap como fallback
+  const palabrasGracias = ['gracias', 'thank', 'confirmation', 'confirmacion', 'exito', 'success'];
+  const tieneLinkGracias = await page.evaluate((palabras) => {
     return Array.from(document.querySelectorAll('a[href]')).some(a =>
-      palabras.some(p => (a.href||'').toLowerCase().includes(p) || (a.textContent||'').toLowerCase().includes(p))
+      palabras.some(p => (a.href || '').toLowerCase().includes(p) || (a.textContent || '').toLowerCase().includes(p))
     );
-  });
-  checks.push({
-    nombre: 'Pagina de gracias',
-    estado: tienePaginaGracias ? 'OK' : 'ADVERTENCIA',
-    detalle: tienePaginaGracias ? 'Pagina de gracias detectada' : 'No se detecto pagina de gracias — el Pixel y GA4 no pueden trackear conversiones'
-  });
+  }, palabrasGracias);
+
+  let estadoGracias, detalleGracias;
+  if (tieneLinkGracias) {
+    estadoGracias = 'OK';
+    detalleGracias = 'Pagina de gracias detectada (link encontrado)';
+  } else {
+    const graciasSitemap = await buscarEnSitemap(baseUrl, palabrasGracias);
+    if (graciasSitemap.length > 0) {
+      estadoGracias = 'OK';
+      detalleGracias = `Pagina de gracias encontrada en sitemap: ${graciasSitemap[0]}`;
+    } else {
+      estadoGracias = 'ADVERTENCIA';
+      detalleGracias = 'No se detecto pagina de gracias — el Pixel y GA4 no pueden trackear conversiones';
+    }
+  }
+  checks.push({ nombre: 'Pagina de gracias', estado: estadoGracias, detalle: detalleGracias });
+
+  // Verificar widget Tochat/Chatwit si esta presente
+  const tochatResult = await verificarWidgetTochat(page);
+  if (tochatResult) checks.push(tochatResult);
 
   const antispamInfo = await page.evaluate(() => {
     const html = document.documentElement.outerHTML.toLowerCase();
     const detectados = [];
-
-    // reCAPTCHA (Google v2/v3)
-    if (document.querySelector('.g-recaptcha, iframe[src*="recaptcha"], script[src*="recaptcha"]') ||
-        window.grecaptcha) {
-      detectados.push('reCAPTCHA');
-    }
-
-    // hCaptcha
-    if (document.querySelector('.h-captcha, iframe[src*="hcaptcha"], script[src*="hcaptcha"]')) {
-      detectados.push('hCaptcha');
-    }
-
-    // Cloudflare Turnstile
-    if (document.querySelector('.cf-turnstile, script[src*="challenges.cloudflare.com"]') ||
-        window.turnstile) {
-      detectados.push('Cloudflare Turnstile');
-    }
-
-    // CleanTalk (WordPress, invisible)
+    if (document.querySelector('.g-recaptcha, iframe[src*="recaptcha"], script[src*="recaptcha"]') || window.grecaptcha) detectados.push('reCAPTCHA');
+    if (document.querySelector('.h-captcha, iframe[src*="hcaptcha"], script[src*="hcaptcha"]')) detectados.push('hCaptcha');
+    if (document.querySelector('.cf-turnstile, script[src*="challenges.cloudflare.com"]') || window.turnstile) detectados.push('Cloudflare Turnstile');
     if (document.querySelector('script[src*="cleantalk"], script[src*="apbct"]') ||
         document.querySelector('input[name*="ct_checkjs"], input[name*="apbct"]') ||
         html.includes('apbct_event_id') || html.includes('ctpublicfunctions') ||
-        window.ctNocache || window.ctPublic || window.ctPublicFunctions) {
-      detectados.push('CleanTalk');
-    }
-
-    // Honeypot generico
-    const honeypotSelectors = [
-      'input[name*="honeypot"]','input[name*="hp_"]','input[name="email_confirm"]',
-      'input[name="url"][tabindex="-1"]','input[class*="honeypot"]','input[name="_gotcha"]'
-    ];
-    if (honeypotSelectors.some(sel => document.querySelector(sel))) {
-      detectados.push('Honeypot');
-    }
-
+        window.ctNocache || window.ctPublic || window.ctPublicFunctions) detectados.push('CleanTalk');
+    const honeypotSelectors = ['input[name*="honeypot"]','input[name*="hp_"]','input[name="email_confirm"]','input[name="url"][tabindex="-1"]','input[class*="honeypot"]','input[name="_gotcha"]'];
+    if (honeypotSelectors.some(sel => document.querySelector(sel))) detectados.push('Honeypot');
     return { detectados };
   });
 
@@ -98,6 +134,46 @@ async function checkFormularios({ page, context, mailtrap_token, mailtrap_inbox_
   }
 
   return { nombre: 'Formularios y Conversion', estado: calcularEstado(checks), checks };
+}
+
+async function verificarWidgetTochat(page) {
+  try {
+    const tieneTochat = await page.evaluate(() =>
+      !!document.querySelector('script[src*="tochat"], script[src*="chatwit"]')
+    );
+    if (!tieneTochat) return null;
+
+    const selectores = [
+      '[class*="tochat"] button', '[id*="tochat"] button',
+      '[class*="chatwit"] button', '[id*="chatwit"] button',
+      '[class*="tochat"]', '[id*="tochat"]', '[class*="chatwit"]', '[id*="chatwit"]'
+    ];
+    let botonSelector = null;
+    for (const sel of selectores) {
+      try { await page.waitForSelector(sel, { timeout: 2000 }); botonSelector = sel; break; } catch {}
+    }
+
+    if (!botonSelector) {
+      return { nombre: 'Widget de chat (Tochat/Chatwit)', estado: 'ADVERTENCIA', detalle: 'Script detectado pero el widget no aparecio en 2s — puede cargar tarde' };
+    }
+
+    await page.click(botonSelector).catch(() => {});
+    await page.waitForTimeout(2000);
+
+    const tieneFormulario = await page.evaluate(() => {
+      const el = document.querySelector('[class*="tochat"], [id*="tochat"], [class*="chatwit"], [id*="chatwit"]');
+      if (!el) return false;
+      return el.querySelectorAll('input, textarea').length > 0 || !!el.querySelector('[type="submit"], button');
+    });
+
+    return {
+      nombre: 'Widget de chat (Tochat/Chatwit)',
+      estado: tieneFormulario ? 'OK' : 'ADVERTENCIA',
+      detalle: tieneFormulario ? 'Widget funcional con formulario de contacto' : 'Widget detectado pero sin formulario visible tras click — verifica que abra correctamente'
+    };
+  } catch (e) {
+    return { nombre: 'Widget de chat (Tochat/Chatwit)', estado: 'ADVERTENCIA', detalle: `No se pudo verificar el widget: ${e.message.slice(0, 100)}` };
+  }
 }
 
 async function intentarEnvioFormulario(page, formulario, mailtrap_token, mailtrap_inbox_id) {
