@@ -1,7 +1,5 @@
 /**
  * SECCION 6 — CHAT Y ATENCION
- * Detecta herramientas de chat instaladas
- * (informativo: no penaliza si no hay chat)
  */
 
 async function checkChat({ page }) {
@@ -9,18 +7,22 @@ async function checkChat({ page }) {
 
   const herramientas = await page.evaluate(() => {
     const detectores = [
-      { nombre: 'Intercom', señal: () => !!window.Intercom || !!document.querySelector('#intercom-container, .intercom-launcher') },
-      { nombre: 'Drift', señal: () => !!window.drift || !!document.querySelector('#drift-widget') },
-      { nombre: 'Zendesk Chat', señal: () => !!window.zE || !!document.querySelector('[data-product="web_widget"]') },
-      { nombre: 'HubSpot Chat', señal: () => !!window.HubSpotConversations || !!document.querySelector('#hubspot-messages-iframe-container') },
-      { nombre: 'LiveChat', señal: () => !!window.LiveChatWidget || !!document.querySelector('#chat-widget-container') },
-      { nombre: 'Tidio', señal: () => !!window.tidioChatApi || !!document.querySelector('#tidio-chat, #tidio-chat-iframe') },
-      { nombre: 'ManyChat', señal: () => !!document.querySelector('[class*="manychat"], script[src*="manychat"]') },
-      { nombre: 'Crisp', señal: () => !!window.$crisp || !!document.querySelector('.crisp-client') },
-      { nombre: 'Tawk.to', señal: () => !!window.Tawk_API || !!document.querySelector('#tawkchat-container') },
-      { nombre: 'Chatbase', señal: () => !!document.querySelector('script[src*="chatbase"]') },
+      { nombre: 'Intercom', se\u00f1al: () => !!window.Intercom || !!document.querySelector('#intercom-container, .intercom-launcher') },
+      { nombre: 'Drift', se\u00f1al: () => !!window.drift || !!document.querySelector('#drift-widget') },
+      { nombre: 'Zendesk Chat', se\u00f1al: () => !!window.zE || !!document.querySelector('[data-product="web_widget"]') },
+      { nombre: 'HubSpot Chat', se\u00f1al: () => !!window.HubSpotConversations || !!document.querySelector('#hubspot-messages-iframe-container') },
+      { nombre: 'LiveChat', se\u00f1al: () => !!window.LiveChatWidget || !!document.querySelector('#chat-widget-container') },
+      { nombre: 'Tidio', se\u00f1al: () => !!window.tidioChatApi || !!document.querySelector('#tidio-chat, #tidio-chat-iframe') },
+      { nombre: 'ManyChat', se\u00f1al: () => !!document.querySelector('[class*="manychat"], script[src*="manychat"]') },
+      { nombre: 'Crisp', se\u00f1al: () => !!window.$crisp || !!document.querySelector('.crisp-client') },
+      { nombre: 'Tawk.to', se\u00f1al: () => !!window.Tawk_API || !!document.querySelector('#tawkchat-container') },
+      { nombre: 'Chatbase', se\u00f1al: () => !!document.querySelector('script[src*="chatbase"]') },
+      { nombre: 'Tochat / Chatwit', se\u00f1al: () =>
+        !!document.querySelector('script[src*="tochat"], script[src*="chatwit"], [class*="tochat"], [class*="chatwit"]') ||
+        !!window.tochat || !!window.chatwit
+      },
     ];
-    return detectores.filter(d => { try { return d.señal(); } catch { return false; } }).map(d => d.nombre);
+    return detectores.filter(d => { try { return d.se\u00f1al(); } catch { return false; } }).map(d => d.nombre);
   });
 
   checks.push({

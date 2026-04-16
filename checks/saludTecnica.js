@@ -4,7 +4,6 @@
 async function checkSaludTecnica({ url, page, erroresJS, httpStatus }) {
   const checks = [];
 
-  // 0. Estado HTTP — si es 4xx/5xx los demas checks son poco confiables
   if (httpStatus !== null && httpStatus !== undefined) {
     const esError = httpStatus >= 400;
     checks.push({
@@ -23,7 +22,6 @@ async function checkSaludTecnica({ url, page, erroresJS, httpStatus }) {
     detalle: esHttps ? 'El sitio usa HTTPS correctamente' : 'El sitio NO usa HTTPS'
   });
 
-  // Shortlinks y dominios que no se deben verificar
   const dominiosExcluir = ['wa.link','bit.ly','t.co','goo.gl','ow.ly','tinyurl.com','rb.gy','cutt.ly','short.io','lnkd.in','fb.me','amzn.to'];
 
   const linksRotos = await page.evaluate(async (excluir) => {
@@ -96,11 +94,11 @@ async function checkSaludTecnica({ url, page, erroresJS, httpStatus }) {
     items: linksMenuRotos.map(l => `"${l.texto}" \u2192 ${l.url} [${l.status}]`)
   });
 
-  // Imagenes rotas — distinguir internas (ERROR) de externas (ADVERTENCIA, puede ser anti-hotlinking)
+  // Imagenes rotas — usar img.complete && naturalWidth === 0 para evitar falsos positivos con lazy loading
   const imagenesRotas = await page.evaluate(() => {
     const dominio = window.location.hostname;
     return Array.from(document.querySelectorAll('img'))
-      .filter(img => !img.complete || img.naturalWidth === 0)
+      .filter(img => img.complete && img.naturalWidth === 0)
       .map(img => {
         const src = img.src || img.getAttribute('src') || '';
         let esExterna = false;
@@ -110,17 +108,15 @@ async function checkSaludTecnica({ url, page, erroresJS, httpStatus }) {
       .slice(0, 20);
   });
 
-  const rotasInternas  = imagenesRotas.filter(i => !i.esExterna);
-  const rotasExternas  = imagenesRotas.filter(i =>  i.esExterna);
-  const hayRotasReales = rotasInternas.length > 0;
-  const hayExternas    = rotasExternas.length > 0;
+  const rotasInternas = imagenesRotas.filter(i => !i.esExterna);
+  const rotasExternas = imagenesRotas.filter(i =>  i.esExterna);
 
   checks.push({
     nombre: 'Imagenes rotas',
-    estado: hayRotasReales ? 'ERROR' : hayExternas ? 'ADVERTENCIA' : 'OK',
+    estado: rotasInternas.length > 0 ? 'ERROR' : rotasExternas.length > 0 ? 'ADVERTENCIA' : 'OK',
     detalle: imagenesRotas.length === 0
       ? 'No se encontraron imagenes rotas'
-      : `${rotasInternas.length > 0 ? rotasInternas.length + ' interna(s) rota(s)' : ''}${rotasInternas.length > 0 && hayExternas ? ' + ' : ''}${hayExternas ? rotasExternas.length + ' externa(s) \u2014 puede ser anti-hotlinking' : ''}`,
+      : `${rotasInternas.length > 0 ? rotasInternas.length + ' interna(s) rota(s)' : ''}${rotasInternas.length > 0 && rotasExternas.length > 0 ? ' + ' : ''}${rotasExternas.length > 0 ? rotasExternas.length + ' externa(s) \u2014 puede ser anti-hotlinking' : ''}`,
     items: imagenesRotas.map(i => `${i.alt}${i.esExterna ? ' [externo]' : ''} \u2192 ${i.src}`)
   });
 

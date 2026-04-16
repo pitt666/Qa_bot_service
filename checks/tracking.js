@@ -20,7 +20,7 @@ async function checkTracking({ page }) {
       } catch {}
       if (!metaPixel.pixelId) {
         for (const s of document.querySelectorAll('script:not([src])')) {
-          const match = s.textContent.match(/fbq\s*\(\s*['"](init)['"]\s*,\s*['"](\d{10,16})['"]\s*\)/);
+          const match = s.textContent.match(/fbq\s*\(\s*['"](init)['"]\s*,\s*['"]( \d{10,16})['"]\s*\)/);
           if (match) { metaPixel.pixelId = match[2]; break; }
         }
       }
@@ -80,10 +80,10 @@ async function checkTracking({ page }) {
     resultado.googleAds = googleAds;
 
     // TikTok
-    const tiktok = { detectado: false, pixelId: null, eventos: [] };
+    const tiktok = { detectado: false, pixelId: null };
     if (window.ttq || window.TiktokAnalyticsObject) {
       tiktok.detectado = true;
-      const m = scriptTextos.match(/ttq\.load\s*\(\s*['"](\w+)['"]/);
+      const m = scriptTextos.match(/ttq\.load\s*\(\s*['"]([\w]+)['"]/);
       if (m) tiktok.pixelId = m[1];
     }
     resultado.tiktok = tiktok;
@@ -97,15 +97,13 @@ async function checkTracking({ page }) {
     resultado.linkedin = linkedin;
 
     // Clarity
-    const clarity = { detectado: !!(window.clarity || document.querySelector('script[src*="clarity.ms"]')) };
-    resultado.clarity = clarity;
+    resultado.clarity = { detectado: !!(window.clarity || document.querySelector('script[src*="clarity.ms"]')) };
 
     // Hotjar
-    const hotjar = { detectado: !!(window.hj || window._hjSettings || document.querySelector('script[src*="hotjar.com"]')), siteId: window._hjSettings?.hjid || null };
-    resultado.hotjar = hotjar;
+    resultado.hotjar = { detectado: !!(window.hj || window._hjSettings || document.querySelector('script[src*="hotjar.com"]')), siteId: window._hjSettings?.hjid || null };
 
-    // Scripts desconocidos
-    const conocidos = ['google','facebook','fb.com','instagram','tiktok','linkedin','hotjar','clarity.ms','hubspot','intercom','drift','zendesk','crisp','tawk','tidio','youtube','vimeo','cloudflare','jquery','bootstrap','wordpress','shopify','stripe','paypal','googleapis','recaptcha','sentry','cdn.jsdelivr','cdnjs','unpkg'];
+    // Scripts de terceros (dominios desconocidos)
+    const conocidos = ['google','facebook','fb.com','instagram','tiktok','linkedin','hotjar','clarity.ms','hubspot','intercom','drift','zendesk','crisp','tawk','tidio','youtube','vimeo','cloudflare','jquery','bootstrap','wordpress','shopify','stripe','paypal','googleapis','recaptcha','sentry','cdn.jsdelivr','cdnjs','unpkg','tochat','chatwit'];
     const dominioActual = window.location.hostname.replace('www.','');
     const desconocidos = [];
     for (const s of document.querySelectorAll('script[src]')) {
@@ -149,10 +147,14 @@ async function checkTracking({ page }) {
   const grabacion = [];
   if (clarity.detectado) grabacion.push('Microsoft Clarity');
   if (hotjar.detectado) grabacion.push(`Hotjar${hotjar.siteId ? ` (${hotjar.siteId})` : ''}`);
+
+  // Scripts de terceros: siempre INFORMATIVO (no es error ni advertencia, solo informacion)
   checks.push({
-    nombre: 'Scripts de terceros desconocidos',
-    estado: scriptsDesconocidos.length === 0 ? 'OK' : scriptsDesconocidos.length <= 2 ? 'ADVERTENCIA' : 'ERROR',
-    detalle: scriptsDesconocidos.length === 0 ? `Scripts conocidos${grabacion.length ? ` — grabacion: ${grabacion.join(', ')}` : ''}` : `${scriptsDesconocidos.length} script(s) desconocido(s)`,
+    nombre: 'Scripts de terceros',
+    estado: 'INFORMATIVO',
+    detalle: scriptsDesconocidos.length === 0
+      ? `Solo dominios conocidos${grabacion.length ? ` — Grabacion: ${grabacion.join(', ')}` : ''}`
+      : `${scriptsDesconocidos.length} dominio(s) de terceros cargados${grabacion.length ? ` — Grabacion: ${grabacion.join(', ')}` : ''}`,
     items: [...scriptsDesconocidos, ...grabacion.map(g => `Grabacion: ${g}`)]
   });
 
