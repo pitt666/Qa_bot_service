@@ -64,7 +64,7 @@ async function checkNegocio({ url, page }) {
     nombre: 'WhatsApp',
     estado: whatsappInfo.numeros.length > 0 || whatsappInfo.widgetDetectado ? 'OK' : 'ADVERTENCIA',
     detalle: whatsappInfo.numeros.length > 0 || whatsappInfo.widgetDetectado ? `${whatsappInfo.numeros.length} boton(es) de WhatsApp${whatsappInfo.widgetDetectado ? ' + widget flotante' : ''}` : 'No se detectaron botones de WhatsApp',
-    items: whatsappInfo.numeros.map(n => `${n.numero} — "${n.texto}" (${n.ubicacion})`)
+    items: whatsappInfo.numeros.map(n => `${n.numero} \u2014 "${n.texto}" (${n.ubicacion})`)
   });
 
   const telefonosInfo = await page.evaluate(() => {
@@ -73,7 +73,7 @@ async function checkNegocio({ url, page }) {
     return { clickeables, numerosEnTexto };
   });
   if (telefonosInfo.clickeables.length > 0) {
-    checks.push({ nombre: 'Telefono clickeable', estado: 'OK', detalle: `${telefonosInfo.clickeables.length} numero(s) clickeable(s)`, items: telefonosInfo.clickeables.map(t => `${t.numero} — "${t.texto}"`) });
+    checks.push({ nombre: 'Telefono clickeable', estado: 'OK', detalle: `${telefonosInfo.clickeables.length} numero(s) clickeable(s)`, items: telefonosInfo.clickeables.map(t => `${t.numero} \u2014 "${t.texto}"`) });
   } else if (telefonosInfo.numerosEnTexto > 0) {
     checks.push({ nombre: 'Telefono clickeable', estado: 'ADVERTENCIA', detalle: 'Hay numeros en el texto pero NO son clickeables en mobile' });
   } else {
@@ -115,7 +115,7 @@ async function checkNegocio({ url, page }) {
     }
     return { ok: false };
   });
-  checks.push({ nombre: 'Favicon', estado: favicon.ok ? 'OK' : 'ADVERTENCIA', detalle: favicon.ok ? `Favicon configurado — ${favicon.como}` : 'Sin favicon' });
+  checks.push({ nombre: 'Favicon', estado: favicon.ok ? 'OK' : 'ADVERTENCIA', detalle: favicon.ok ? `Favicon configurado \u2014 ${favicon.como}` : 'Sin favicon' });
 
   const tieneCookies = await page.evaluate(() => {
     const texto = document.body.innerText.toLowerCase();
@@ -124,21 +124,32 @@ async function checkNegocio({ url, page }) {
   });
   checks.push({ nombre: 'Aviso de cookies / GDPR', estado: tieneCookies ? 'OK' : 'ADVERTENCIA', detalle: tieneCookies ? 'Aviso de cookies detectado' : 'No se detecto aviso de cookies' });
 
-  // Detectar docs legales: links + texto plano en pagina
   const docsLegales = await page.evaluate(() => {
     const normLocal = t => (t || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
     const links = Array.from(document.querySelectorAll('a[href]'));
+
     const buscarLink = (palabras) => {
-      const hit = links.find(a => {
+      // 1. <a href> estandar
+      const hitLink = links.find(a => {
         const t = normLocal(a.textContent + ' ' + (a.href || ''));
         return palabras.some(p => t.includes(normLocal(p)));
       });
-      return hit ? hit.textContent.trim().slice(0, 60) : null;
+      if (hitLink) return hitLink.textContent.trim().slice(0, 60);
+      // 2. Elementos JS-clickeables (onclick, role="link", data-href, data-url)
+      const interactivos = Array.from(document.querySelectorAll('[onclick], [role="link"], [data-href], [data-url]'));
+      const hitJs = interactivos.find(el => {
+        const atrs = [el.getAttribute('onclick'), el.getAttribute('data-href'), el.getAttribute('data-url')].filter(Boolean).join(' ');
+        const t = normLocal(el.textContent + ' ' + atrs);
+        return palabras.some(p => t.includes(normLocal(p)));
+      });
+      return hitJs ? hitJs.textContent.trim().slice(0, 60) + ' (JS)' : null;
     };
+
     const buscarTexto = (palabras) => {
       const txt = normLocal(document.body.innerText);
       return palabras.some(p => txt.includes(normLocal(p)));
     };
+
     return {
       privacidad: {
         link: buscarLink(['privacidad', 'privacy', 'aviso legal', 'aviso de privacidad', 'politica de privacidad', 'pol\u00edtica de privacidad']),
@@ -155,44 +166,40 @@ async function checkNegocio({ url, page }) {
     };
   });
 
-  // Fallback sitemap (server-side)
   const [privSitemap, termSitemap, cookSitemap] = await Promise.all([
     buscarEnSitemap(baseUrl, ['privacidad', 'privacy', 'aviso-legal', 'aviso-privacidad']),
     buscarEnSitemap(baseUrl, ['terminos', 'condiciones', 'terms']),
     buscarEnSitemap(baseUrl, ['cookies', 'cookie-policy'])
   ]);
 
-  // Politica de privacidad — 3 niveles
   if (docsLegales.privacidad.link) {
     checks.push({ nombre: 'Politica de privacidad', estado: 'OK', detalle: `Enlace encontrado: "${docsLegales.privacidad.link}"` });
   } else if (privSitemap.length > 0) {
-    checks.push({ nombre: 'Politica de privacidad', estado: 'ADVERTENCIA', detalle: `Pagina existe en sitemap (${privSitemap[0]}) pero sin link visible — agregar enlace en el footer` });
+    checks.push({ nombre: 'Politica de privacidad', estado: 'ADVERTENCIA', detalle: `Pagina existe en sitemap (${privSitemap[0]}) pero sin link visible \u2014 agregar enlace en el footer` });
   } else if (docsLegales.privacidad.enTexto) {
-    checks.push({ nombre: 'Politica de privacidad', estado: 'ADVERTENCIA', detalle: 'Texto visible pero sin link clickeable — el usuario no puede acceder, agregar <a href> en el footer' });
+    checks.push({ nombre: 'Politica de privacidad', estado: 'ADVERTENCIA', detalle: 'Texto visible pero sin link clickeable \u2014 el usuario no puede acceder, agregar <a href> en el footer' });
   } else {
-    checks.push({ nombre: 'Politica de privacidad', estado: 'ERROR', detalle: 'Sin politica de privacidad — obligatorio si tienes formularios o tracking' });
+    checks.push({ nombre: 'Politica de privacidad', estado: 'ERROR', detalle: 'Sin politica de privacidad \u2014 obligatorio si tienes formularios o tracking' });
   }
 
-  // Terminos y condiciones — 3 niveles
   if (docsLegales.terminos.link) {
     checks.push({ nombre: 'Terminos y condiciones', estado: 'OK', detalle: `Enlace encontrado: "${docsLegales.terminos.link}"` });
   } else if (termSitemap.length > 0) {
-    checks.push({ nombre: 'Terminos y condiciones', estado: 'ADVERTENCIA', detalle: `Pagina existe en sitemap (${termSitemap[0]}) pero sin link — agregar en el footer` });
+    checks.push({ nombre: 'Terminos y condiciones', estado: 'ADVERTENCIA', detalle: `Pagina existe en sitemap (${termSitemap[0]}) pero sin link \u2014 agregar en el footer` });
   } else if (docsLegales.terminos.enTexto) {
-    checks.push({ nombre: 'Terminos y condiciones', estado: 'ADVERTENCIA', detalle: 'Mencionado en texto pero sin link clickeable — agregar <a href>' });
+    checks.push({ nombre: 'Terminos y condiciones', estado: 'ADVERTENCIA', detalle: 'Mencionado en texto pero sin link clickeable \u2014 agregar <a href>' });
   } else {
-    checks.push({ nombre: 'Terminos y condiciones', estado: 'ADVERTENCIA', detalle: 'Sin terminos y condiciones — recomendado' });
+    checks.push({ nombre: 'Terminos y condiciones', estado: 'ADVERTENCIA', detalle: 'Sin terminos y condiciones \u2014 recomendado' });
   }
 
-  // Politica de cookies — 3 niveles
   if (docsLegales.cookies.link) {
     checks.push({ nombre: 'Politica de cookies', estado: 'OK', detalle: `Enlace encontrado: "${docsLegales.cookies.link}"` });
   } else if (cookSitemap.length > 0) {
-    checks.push({ nombre: 'Politica de cookies', estado: 'ADVERTENCIA', detalle: `Pagina existe en sitemap (${cookSitemap[0]}) pero sin link — agregar en el footer` });
+    checks.push({ nombre: 'Politica de cookies', estado: 'ADVERTENCIA', detalle: `Pagina existe en sitemap (${cookSitemap[0]}) pero sin link \u2014 agregar en el footer` });
   } else if (docsLegales.cookies.enTexto) {
-    checks.push({ nombre: 'Politica de cookies', estado: 'ADVERTENCIA', detalle: 'Mencionado en texto pero sin link clickeable — agregar <a href>' });
+    checks.push({ nombre: 'Politica de cookies', estado: 'ADVERTENCIA', detalle: 'Mencionado en texto pero sin link clickeable \u2014 agregar <a href>' });
   } else {
-    checks.push({ nombre: 'Politica de cookies', estado: 'ADVERTENCIA', detalle: 'Sin politica de cookies — recomendado si usas tracking o banner de cookies' });
+    checks.push({ nombre: 'Politica de cookies', estado: 'ADVERTENCIA', detalle: 'Sin politica de cookies \u2014 recomendado si usas tracking o banner de cookies' });
   }
 
   const redes = await page.evaluate(() => {
@@ -217,8 +224,8 @@ function verificarSSL(url) {
         if (!cert || !cert.valid_to) return resolve({ nombre: 'Certificado SSL', estado: 'ADVERTENCIA', detalle: 'No se pudo obtener info del certificado' });
         const dias = Math.floor((new Date(cert.valid_to) - new Date()) / (1000*60*60*24));
         if (dias < 0) resolve({ nombre: 'Certificado SSL', estado: 'ERROR', detalle: 'El certificado SSL ha EXPIRADO' });
-        else if (dias < 15) resolve({ nombre: 'Certificado SSL', estado: 'ERROR', detalle: `Vence en ${dias} dias — URGENTE renovar` });
-        else if (dias < 30) resolve({ nombre: 'Certificado SSL', estado: 'ADVERTENCIA', detalle: `Vence en ${dias} dias — renovar pronto` });
+        else if (dias < 15) resolve({ nombre: 'Certificado SSL', estado: 'ERROR', detalle: `Vence en ${dias} dias \u2014 URGENTE renovar` });
+        else if (dias < 30) resolve({ nombre: 'Certificado SSL', estado: 'ADVERTENCIA', detalle: `Vence en ${dias} dias \u2014 renovar pronto` });
         else resolve({ nombre: 'Certificado SSL', estado: 'OK', detalle: `Valido, vence en ${dias} dias` });
       });
       socket.on('error', () => resolve({ nombre: 'Certificado SSL', estado: 'ADVERTENCIA', detalle: 'No se pudo verificar el certificado' }));

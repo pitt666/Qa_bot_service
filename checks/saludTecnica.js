@@ -36,24 +36,42 @@ async function checkSaludTecnica({ url, page, erroresJS, httpStatus }) {
         return u.hostname === dominio;
       } catch { return false; }
     }).slice(0, 20);
+
     const resultados = await Promise.all(
-      internos.map(a => {
-        const ctrl = new AbortController();
-        setTimeout(() => ctrl.abort(), 5000);
-        return fetch(a.href, { method: 'HEAD', cache: 'no-cache', signal: ctrl.signal })
-          .then(r => ({ href: a.href, status: r.status, texto: a.textContent.trim().slice(0, 50) }))
-          .catch(() => ({ href: a.href, status: 'Sin respuesta', texto: a.textContent.trim().slice(0, 50) }));
+      internos.map(async a => {
+        const href = a.href;
+        const texto = a.textContent.trim().slice(0, 50);
+        // Intentar HEAD primero
+        const c1 = new AbortController();
+        setTimeout(() => c1.abort(), 5000);
+        try {
+          const r = await fetch(href, { method: 'HEAD', cache: 'no-cache', signal: c1.signal });
+          return { href, status: r.status, texto };
+        } catch {}
+        // Fallback GET (muchos servidores bloquean HEAD)
+        const c2 = new AbortController();
+        setTimeout(() => c2.abort(), 5000);
+        try {
+          const r = await fetch(href, { method: 'GET', cache: 'no-cache', signal: c2.signal });
+          return { href, status: r.status, texto };
+        } catch {
+          return { href, status: 'Sin respuesta', texto };
+        }
       })
     );
     return resultados
-      .filter(({ status }) => status === 'Sin respuesta' || (typeof status === 'number' && status >= 400))
+      .filter(({ status }) => (typeof status === 'number' && status >= 400) || status === 'Sin respuesta')
       .map(({ href, status, texto }) => ({ url: href, status, texto }));
   }, dominiosExcluir);
 
+  const rotosConfirmados = linksRotos.filter(l => typeof l.status === 'number');
+  const sinRespuesta     = linksRotos.filter(l => l.status === 'Sin respuesta');
   checks.push({
     nombre: 'Links rotos',
-    estado: linksRotos.length === 0 ? 'OK' : 'ERROR',
-    detalle: linksRotos.length === 0 ? 'No se encontraron links rotos' : `${linksRotos.length} link(s) roto(s)`,
+    estado: rotosConfirmados.length > 0 ? 'ERROR' : sinRespuesta.length > 0 ? 'ADVERTENCIA' : 'OK',
+    detalle: linksRotos.length === 0
+      ? 'No se encontraron links rotos'
+      : `${rotosConfirmados.length > 0 ? rotosConfirmados.length + ' link(s) roto(s)' : ''}${rotosConfirmados.length > 0 && sinRespuesta.length > 0 ? ' + ' : ''}${sinRespuesta.length > 0 ? sinRespuesta.length + ' sin respuesta (servidor puede bloquear HEAD+GET — verificar manualmente)' : ''}`,
     items: linksRotos.map(l => `${l.texto || '(sin texto)'} \u2192 ${l.url} [${l.status}]`)
   });
 
@@ -74,27 +92,39 @@ async function checkSaludTecnica({ url, page, erroresJS, httpStatus }) {
       });
     }
     const resultados = await Promise.all(
-      navLinks.map(link => {
-        const ctrl = new AbortController();
-        setTimeout(() => ctrl.abort(), 5000);
-        return fetch(link.href, { method: 'HEAD', cache: 'no-cache', signal: ctrl.signal })
-          .then(r => ({ link, status: r.status }))
-          .catch(() => ({ link, status: 'Sin respuesta' }));
+      navLinks.map(async link => {
+        const c1 = new AbortController();
+        setTimeout(() => c1.abort(), 5000);
+        try {
+          const r = await fetch(link.href, { method: 'HEAD', cache: 'no-cache', signal: c1.signal });
+          return { link, status: r.status };
+        } catch {}
+        const c2 = new AbortController();
+        setTimeout(() => c2.abort(), 5000);
+        try {
+          const r = await fetch(link.href, { method: 'GET', cache: 'no-cache', signal: c2.signal });
+          return { link, status: r.status };
+        } catch {
+          return { link, status: 'Sin respuesta' };
+        }
       })
     );
     return resultados
-      .filter(({ status }) => status === 'Sin respuesta' || (typeof status === 'number' && status >= 400))
+      .filter(({ status }) => (typeof status === 'number' && status >= 400) || status === 'Sin respuesta')
       .map(({ link, status }) => ({ url: link.href, status, texto: link.texto }));
   }, dominiosExcluir);
 
+  const menuConfirmados = linksMenuRotos.filter(l => typeof l.status === 'number');
+  const menuSinResp     = linksMenuRotos.filter(l => l.status === 'Sin respuesta');
   checks.push({
     nombre: 'Links rotos en menu',
-    estado: linksMenuRotos.length === 0 ? 'OK' : 'ERROR',
-    detalle: linksMenuRotos.length === 0 ? 'Todos los links del menu funcionan' : `${linksMenuRotos.length} link(s) roto(s) en el menu`,
+    estado: menuConfirmados.length > 0 ? 'ERROR' : menuSinResp.length > 0 ? 'ADVERTENCIA' : 'OK',
+    detalle: linksMenuRotos.length === 0
+      ? 'Todos los links del menu funcionan'
+      : `${menuConfirmados.length > 0 ? menuConfirmados.length + ' link(s) roto(s)' : ''}${menuConfirmados.length > 0 && menuSinResp.length > 0 ? ' + ' : ''}${menuSinResp.length > 0 ? menuSinResp.length + ' sin respuesta — verificar manualmente' : ''}`,
     items: linksMenuRotos.map(l => `"${l.texto}" \u2192 ${l.url} [${l.status}]`)
   });
 
-  // Imagenes rotas — usar img.complete && naturalWidth === 0 para evitar falsos positivos con lazy loading
   const imagenesRotas = await page.evaluate(() => {
     const dominio = window.location.hostname;
     return Array.from(document.querySelectorAll('img'))
@@ -110,7 +140,6 @@ async function checkSaludTecnica({ url, page, erroresJS, httpStatus }) {
 
   const rotasInternas = imagenesRotas.filter(i => !i.esExterna);
   const rotasExternas = imagenesRotas.filter(i =>  i.esExterna);
-
   checks.push({
     nombre: 'Imagenes rotas',
     estado: rotasInternas.length > 0 ? 'ERROR' : rotasExternas.length > 0 ? 'ADVERTENCIA' : 'OK',
